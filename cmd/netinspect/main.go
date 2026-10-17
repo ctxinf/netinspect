@@ -27,6 +27,8 @@ func main() {
 			return
 		case "__agent":
 			err = agentCmd(args[1:])
+		case "skills":
+			err = skillsCmd(args[1:])
 		case "init-config":
 			err = initConfigCmd(args[1:])
 		case "stop":

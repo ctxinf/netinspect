@@ -20,6 +20,7 @@ Usage:
 Commands:
   run                 Run and monitor a command (default)
   stop                Shut down a running dashboard
+  skills              Read bundled agent guidance (list, get core [--full])
   init-config         Create default user configuration
   version             Print version information
   help                Print this help
