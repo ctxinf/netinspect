@@ -2,7 +2,7 @@
 // connections into this single core; it dials the real target directly,
 // records connection-level metadata, and relays bytes. It never decrypts or
 // inspects content: TLS is only classified from the ClientHello (SNI/ALPN).
-// Phase 1 has no upstream proxy support (Upstream is a stub for later).
+// Explicit HTTP(S) CONNECT and SOCKS5 upstreams are supported.
 package proxy
 
 import (
@@ -27,7 +27,7 @@ import (
 )
 
 // Upstream routes an outbound connection through an upstream proxy.
-// Phase 1 does not implement any upstream; nil means direct dial.
+// A nil upstream means direct dial.
 type Upstream interface {
 	DialContext(ctx context.Context, network, address string) (net.Conn, error)
 	Name() string
@@ -302,7 +302,7 @@ func (s *Server) establish(client net.Conn, origHost, dialIP string, origPort in
 		client.Close()
 		return nil, nil
 	}
-	if net.ParseIP(dialIP) == nil {
+	if net.ParseIP(dialIP) == nil && s.cfg.Upstream == nil {
 		addrs, err := net.DefaultResolver.LookupIPAddr(context.Background(), dialIP)
 		if err != nil || len(addrs) == 0 {
 			rec := s.recordFailed(client, origHost, "", origPort, "dns_error", "resolve: "+errString(err))
@@ -311,10 +311,18 @@ func (s *Server) establish(client net.Conn, origHost, dialIP string, origPort in
 		dialIP = addrs[0].IP.String()
 	}
 
+	recordIP := dialIP
+	if net.ParseIP(recordIP) == nil {
+		recordIP = ""
+	}
+	route := "DIRECT"
+	if s.cfg.Upstream != nil {
+		route = s.cfg.Upstream.Name()
+	}
 	rec := &store.Conn{
 		PID: pid, Comm: comm, Mode: mode,
-		OrigHost: origHost, OrigIP: dialIP, OrigPort: origPort,
-		Route: "DIRECT", Result: "open",
+		OrigHost: origHost, OrigIP: recordIP, OrigPort: origPort,
+		Route: route, Result: "open",
 	}
 	if addr := client.RemoteAddr(); addr != nil {
 		rec.Source = addr.String()
@@ -322,7 +330,7 @@ func (s *Server) establish(client net.Conn, origHost, dialIP string, origPort in
 	s.cfg.Store.AddConnection(rec)
 	s.emitConn("conn_new", rec)
 
-	// dial (phase 1: always direct)
+	// Dial through the explicit upstream, or directly when none is configured.
 	t0 := time.Now()
 	var server net.Conn
 	var err error

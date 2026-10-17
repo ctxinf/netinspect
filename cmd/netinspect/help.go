@@ -33,6 +33,7 @@ Options:
       --keep-alive <TIME> Keep dashboard after target exits; 0 disables [default: 30m]
       --open-browser     Open dashboard automatically [default: true; use =false to disable]
       --memory-mb <MB>    Record storage budget in MiB [default: 128]
+      --upstream-proxy <URL> TCP via http(s):// or socks5(h)://; optional user:password
       --config <FILE>     Load only this JSON configuration file
       --version          Print version information
   -h, --help             Print help
@@ -56,6 +57,9 @@ Capture notes:
   Each record reserves 8 KiB. The default budget holds at most 16384 records.
   At capacity, existing records still update and traffic continues; new records stop.
   Proxy buffers and the Go runtime use additional memory.
+  Upstream proxy applies to TCP only (preload, ptrace, netns); DNS/UDP stay direct.
+  socks5 resolves target names locally; socks5h and HTTP(S) resolve at the proxy.
+  In netns, the upstream must be reachable from inside the namespace.
 `
 
 func printHelp() {

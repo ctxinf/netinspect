@@ -38,16 +38,18 @@ import (
 
 // Config configures one run.
 type Config struct {
-	Mode        string   // preload|ptrace|netns|observe
-	Listen      string   // dashboard listen addr, e.g. 127.0.0.1:17890
-	Command     []string // target command
-	ExePath     string   // this binary (for __agent re-exec)
-	TargetUser  string
-	OpenBrowser bool
-	KeepAlive   time.Duration
-	MemoryMB    int64
-	identity    *targetIdentity
-	runtime     *runtimeState
+	UpstreamProxy string
+	upstream      proxy.Upstream
+	Mode          string   // preload|ptrace|netns|observe
+	Listen        string   // dashboard listen addr, e.g. 127.0.0.1:17890
+	Command       []string // target command
+	ExePath       string   // this binary (for __agent re-exec)
+	TargetUser    string
+	OpenBrowser   bool
+	KeepAlive     time.Duration
+	MemoryMB      int64
+	identity      *targetIdentity
+	runtime       *runtimeState
 }
 
 var validModes = map[string]bool{
@@ -85,6 +87,14 @@ func Run(cfg Config) error {
 	if len(cfg.Command) == 0 {
 		return fmt.Errorf("no command given")
 	}
+	if cfg.Mode == "observe" && cfg.UpstreamProxy != "" {
+		return fmt.Errorf("--upstream-proxy is not supported in observe mode")
+	}
+	upstream, err := proxy.NewUpstream(cfg.UpstreamProxy, cfg.Mode == "netns")
+	if err != nil {
+		return err
+	}
+	cfg.upstream = upstream
 	if cfg.Mode == "netns" && os.Geteuid() != 0 {
 		return fmt.Errorf("netns requires root to create a network namespace; launch with sudo (the target defaults to the original sudo user)")
 	}
@@ -194,6 +204,9 @@ func printBanner() {
 }
 
 func printPanel(cfg Config) {
+	if cfg.upstream != nil {
+		cliui.Printf("· Upstream: %s (TCP only; DNS/UDP are not tunneled)\n", cfg.upstream.Name())
+	}
 	cliui.Printf("· Dashboard: %s\n", cfg.runtime.url)
 	if cfg.OpenBrowser {
 		openBrowser(cfg.runtime.url, cfg.identity)
@@ -271,7 +284,7 @@ func runPreload(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) err
 	}
 	defer side.Close()
 
-	px := proxy.New(proxy.Config{Mode: "preload", Side: side, Store: st, Emit: hub.Publish})
+	px := proxy.New(proxy.Config{Mode: "preload", Side: side, Store: st, Upstream: cfg.upstream, Emit: hub.Publish})
 	go px.ServeSOCKS5(proxyLn)
 
 	dashPort := dashboardPort(cfg.Listen)
@@ -346,7 +359,7 @@ func runPtrace(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) erro
 	}
 	defer side.Close()
 
-	px := proxy.New(proxy.Config{Mode: "ptrace", Side: side, Store: st, Emit: hub.Publish})
+	px := proxy.New(proxy.Config{Mode: "ptrace", Side: side, Store: st, Upstream: cfg.upstream, Emit: hub.Publish})
 	go px.ServeTransparent(proxyLn4)
 	go px.ServeTransparent(proxyLn6)
 
@@ -401,6 +414,9 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 		"--control-token", cfg.runtime.token,
 		"--memory-mb", strconv.FormatInt(cfg.MemoryMB, 10),
 	)
+	if cfg.UpstreamProxy != "" {
+		agent.Env = append(os.Environ(), "NETINSPECT_UPSTREAM_PROXY="+cfg.UpstreamProxy)
+	}
 	agent.Stdout, agent.Stderr = os.Stdout, os.Stderr
 	if err := agent.Start(); err != nil {
 		return fmt.Errorf("start agent: %w", err)

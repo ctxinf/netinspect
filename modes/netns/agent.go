@@ -4,6 +4,7 @@ package netns
 import (
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"netinspect/internal/dashboard"
@@ -18,6 +19,10 @@ func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS, t
 	if len(limits) > 0 && limits[0] > 0 {
 		limit = limits[0]
 	}
+	upstream, err := proxy.NewUpstream(os.Getenv("NETINSPECT_UPSTREAM_PROXY"), true)
+	if err != nil {
+		return err
+	}
 	st := store.NewWithLimit(store.Session{
 		ID:        sid,
 		StartedAt: time.Now().UnixMilli(),
@@ -28,6 +33,7 @@ func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS, t
 	px := proxy.New(proxy.Config{
 		Mode:         "netns",
 		Store:        st,
+		Upstream:     upstream,
 		MarkOutbound: true, // outbound sockets skip our own REDIRECT rule
 		Emit:         hub.Publish,
 	})

@@ -13,19 +13,21 @@ import (
 	"strings"
 	"time"
 
+	"netinspect/internal/proxy"
 	"netinspect/internal/session"
 )
 
 const modeHelp = "--mode MODE  preload (default)| ptrace | netns | observe"
 
 type fileConfig struct {
-	TargetUser  *string `json:"user"`
-	OpenBrowser *bool   `json:"open_browser"`
-	Mode        *string `json:"mode"`
-	Listen      *string `json:"listen"`
-	Port        *int    `json:"port"`
-	KeepAlive   *string `json:"keep_alive"`
-	MemoryMB    *int64  `json:"memory_mb"`
+	UpstreamProxy *string `json:"upstream_proxy"`
+	TargetUser    *string `json:"user"`
+	OpenBrowser   *bool   `json:"open_browser"`
+	Mode          *string `json:"mode"`
+	Listen        *string `json:"listen"`
+	Port          *int    `json:"port"`
+	KeepAlive     *string `json:"keep_alive"`
+	MemoryMB      *int64  `json:"memory_mb"`
 }
 
 func parseRun(args []string, defaultMode string) (session.Config, error) {
@@ -59,7 +61,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		case "--open-browser":
 			// Boolean flags use --open-browser or --open-browser=false.
 
-		case "--config", "--mode", "--listen", "--port", "--keep-alive", "--memory-mb", "--user":
+		case "--config", "--mode", "--listen", "--port", "--keep-alive", "--memory-mb", "--user", "--upstream-proxy":
 			if !equal {
 				i++
 				if i >= len(args) {
@@ -115,6 +117,9 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		if err != nil {
 			return cfg, fmt.Errorf("config %s: %w", path, err)
 		}
+		if fc.UpstreamProxy != nil {
+			cfg.UpstreamProxy = *fc.UpstreamProxy
+		}
 		if fc.TargetUser != nil {
 			cfg.TargetUser = *fc.TargetUser
 		}
@@ -146,6 +151,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	fs := flag.NewFlagSet("netinspect", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() { printHelp() }
+	fs.StringVar(&cfg.UpstreamProxy, "upstream-proxy", cfg.UpstreamProxy, "")
 	fs.StringVar(&cfg.TargetUser, "user", cfg.TargetUser, "")
 	fs.BoolVar(&cfg.OpenBrowser, "open-browser", cfg.OpenBrowser, "")
 	fs.StringVar(&cfg.Mode, "mode", cfg.Mode, "")
@@ -181,6 +187,12 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	}
 	if cfg.TargetUser != "" && cfg.Mode != "netns" {
 		return cfg, fmt.Errorf("--user is only supported in netns mode")
+	}
+	if cfg.Mode == "observe" && cfg.UpstreamProxy != "" {
+		return cfg, fmt.Errorf("--upstream-proxy is not supported in observe mode")
+	}
+	if _, err := proxy.NewUpstream(cfg.UpstreamProxy, false); err != nil {
+		return cfg, err
 	}
 	host, p, err := net.SplitHostPort(cfg.Listen)
 	_ = host

@@ -196,3 +196,23 @@ func TestInitConfig(t *testing.T) {
 		t.Fatal("incorrect status")
 	}
 }
+
+func TestUpstreamConfig(t *testing.T) {
+	cleanConfig(t)
+	if err := os.WriteFile(".netinspect.json", []byte(`{"upstream_proxy":"http://127.0.0.1:3128"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := parseRun([]string{"true"}, "preload")
+	if err != nil || cfg.UpstreamProxy != "http://127.0.0.1:3128" {
+		t.Fatalf("%+v %v", cfg, err)
+	}
+	cfg, err = parseRun([]string{"--upstream-proxy", "socks5h://127.0.0.1:1080", "--", "true"}, "preload")
+	if err != nil || cfg.UpstreamProxy != "socks5h://127.0.0.1:1080" {
+		t.Fatalf("%+v %v", cfg, err)
+	}
+	for _, args := range [][]string{{"--mode", "observe", "--", "true"}, {"--upstream-proxy", "ftp://host", "--", "true"}} {
+		if _, err := parseRun(args, "preload"); err == nil {
+			t.Fatalf("accepted %v", args)
+		}
+	}
+}
