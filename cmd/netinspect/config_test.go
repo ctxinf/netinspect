@@ -182,12 +182,12 @@ func TestInitConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var generated fileConfig
+	var generated map[string]json.RawMessage
 	if err := json.Unmarshal(before, &generated); err != nil {
 		t.Fatal(err)
 	}
-	if generated.UpstreamProxy == nil || *generated.UpstreamProxy != "" {
-		t.Fatal("default config must include an empty upstream_proxy for direct connections")
+	if raw, exists := generated["upstream_proxy"]; !exists || string(raw) != "null" {
+		t.Fatal("default config must explicitly include upstream_proxy: null")
 	}
 	if err := initConfigCmd(nil); err == nil {
 		t.Fatal("overwrote existing config")

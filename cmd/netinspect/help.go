@@ -130,7 +130,7 @@ func initConfigCmd(args []string) error {
   "keep_alive": "30m",
   "open_browser": true,
   "memory_mb": 128,
-  "upstream_proxy": ""
+  "upstream_proxy": null
 }
 `)
 	closeErr := f.Close()

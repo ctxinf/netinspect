@@ -218,7 +218,7 @@ Configuration is loaded in this order, with later values taking precedence:
   "keep_alive": "30m",
   "open_browser": true,
   "memory_mb": 128,
-  "upstream_proxy": ""
+  "upstream_proxy": null
 }
 ```
 
@@ -242,7 +242,7 @@ netinspect --upstream-proxy http://127.0.0.1:3128 -- curl -I https://example.com
 netinspect --upstream-proxy socks5h://127.0.0.1:1080 -- curl -I https://example.com
 ```
 
-The generated default `"upstream_proxy": ""` means direct connections.
+The generated default `"upstream_proxy": null` leaves the upstream unset; connections are direct unless another configuration supplies a proxy. An empty string explicitly disables a previously configured proxy.
 Set `"upstream_proxy": "http://127.0.0.1:3128"` in JSON to enable an upstream.
 Supported schemes are `http`, `https`, `socks5`, and `socks5h`; URL credentials
 (`scheme://user:password@host:port`) enable HTTP Basic or SOCKS5 username/password

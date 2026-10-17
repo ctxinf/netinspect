@@ -210,7 +210,7 @@ netinspect stop --url http://127.0.0.1:17890 --token TOKEN_FROM_TERMINAL
   "keep_alive": "30m",
   "open_browser": true,
   "memory_mb": 128,
-  "upstream_proxy": ""
+  "upstream_proxy": null
 }
 ```
 
@@ -232,7 +232,7 @@ netinspect --upstream-proxy http://127.0.0.1:3128 -- curl -I https://example.com
 netinspect --upstream-proxy socks5h://127.0.0.1:1080 -- curl -I https://example.com
 ```
 
-默认配置中的 `"upstream_proxy": ""` 表示直连。填写 `"upstream_proxy": "http://127.0.0.1:3128"` 即可启用上游代理。
+默认配置中的 `"upstream_proxy": null` 表示未设置上游代理，未被其他配置覆盖时使用直连；空字符串 `""` 可明确禁用此前配置的代理。填写 `"upstream_proxy": "http://127.0.0.1:3128"` 即可启用上游代理。
 支持 `http`、`https`、`socks5`、`socks5h`，以及 URL 中的 `user:password@` 认证（HTTP Basic / SOCKS5 用户名密码）；HTTPS 代理使用系统信任的证书。路由记录和启动提示不包含认证信息，上游失败不会回退为直连。
 
 此功能代理 preload、ptrace、netns 的 TCP，observe 模式会拒绝该选项；DNS/UDP 不走隧道。
