@@ -62,7 +62,7 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 	}
 	pid, err := syscall.ForkExec(cmd, argv, attr)
 	if err != nil {
-		return fmt.Errorf("ptrace 启动目标失败：%w；如被系统拒绝，请检查已有跟踪器、seccomp/Yama 或沙箱限制，可尝试 netns/observe", err)
+		return fmt.Errorf("ptrace target startup failed: %w; check existing tracers, seccomp/Yama or sandbox restrictions; try netns/observe", err)
 	}
 
 	signals := make(chan os.Signal, 1)
@@ -182,7 +182,7 @@ func handleEnter(pid int, st *tracee, proxyPort, dashPort int, warnedNested, war
 	if regs.Orig_rax == unix.SYS_PTRACE && !*warnedNested &&
 		(regs.Rdi == unix.PTRACE_TRACEME || regs.Rdi == unix.PTRACE_ATTACH || regs.Rdi == unix.PTRACE_SEIZE) {
 		*warnedNested = true
-		cliui.Printf("! WARN: PID %d 尝试嵌套 ptrace 跟踪（可能来自 graftcp/strace/调试器），会与当前 ptrace 模式冲突；建议使用 netns 或 observe。\n", pid)
+		cliui.Printf("! WARN: PID %d attempted nested ptrace tracing (possibly graftcp/strace/debugger), which conflicts with ptrace mode; try netns or observe.\n", pid)
 	}
 	if regs.Orig_rax != sysConnect {
 		return
@@ -216,7 +216,7 @@ func handleEnter(pid int, st *tracee, proxyPort, dashPort int, warnedNested, war
 	isTCP, inspectErr := sockIsTCP(pid, fd)
 	if inspectErr != nil && !*warnedCapture {
 		*warnedCapture = true
-		cliui.Printf("! WARN [ptrace]: 无法检查目标套接字：%v；对应连接将跳过，可能受内核版本、seccomp、Yama 或权限限制。可尝试 netns 或 observe。\n", inspectErr)
+		cliui.Printf("! WARN [ptrace]: cannot inspect target socket: %v; connection skipped, possibly due to kernel version, seccomp, Yama or permissions. Try netns or observe.\n", inspectErr)
 	}
 	if !isTCP {
 		debugf("enter pid=%d fd=%d: not a TCP socket, skip", pid, fd)
@@ -245,7 +245,7 @@ func handleEnter(pid int, st *tracee, proxyPort, dashPort int, warnedNested, war
 	if err := writeRemote(pid, uintptr(regs.Rsi), newSA); err != nil {
 		if !*warnedCapture {
 			*warnedCapture = true
-			cliui.Printf("! WARN [ptrace]: 无法改写目标 connect 地址：%v；该连接无法重定向采集。\n", err)
+			cliui.Printf("! WARN [ptrace]: cannot rewrite target connect address: %v; this connection cannot be redirected for capture.\n", err)
 		}
 		return
 	}

@@ -28,12 +28,12 @@ func Errorf(format string, args ...any) { write("31", format, args...) }
 // TargetOutput brackets the target's inherited stdout/stderr. The returned
 // closer is idempotent, including when process startup fails.
 func TargetOutput() func() {
-	Printf("\n──────────────── 目标程序输出 ────────────────\n")
+	Printf("\n──────────────── Target output ────────────────\n")
 	ended := false
 	return func() {
 		if !ended {
 			ended = true
-			Printf("\n──────────────── 目标程序输出结束 ────────────────\n")
+			Printf("\n──────────────── End of target output ────────────────\n")
 		}
 	}
 }

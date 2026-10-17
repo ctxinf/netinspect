@@ -27,24 +27,24 @@ func compatibilityWarnings(mode string, command []string) []string {
 	if base == "flatpak" || base == "snap" {
 		switch mode {
 		case "preload":
-			out = append(out, base+" 使用独立沙箱；Flatpak 默认清除 LD_PRELOAD，宿主机注入库和侧信道也可能不可见。当前 preload 不能保证采集沙箱内应用；可尝试 netns，仍需验证。")
+			out = append(out, base+" uses a separate sandbox; Flatpak clears LD_PRELOAD by default, and host injection libraries/side channels may be inaccessible. Capture is not guaranteed; try netns and verify.")
 		case "ptrace":
-			out = append(out, base+" 的沙箱、权限切换或独立启动服务可能限制 ptrace；启动器被跟踪不代表沙箱内应用已被跟踪。可尝试 netns 或 observe，仍需验证。")
+			out = append(out, base+" sandbox, privilege changes or external launch services may restrict ptrace. Tracing a launcher does not confirm tracing the application. Try netns or observe and verify.")
 		case "netns":
-			out = append(out, base+" 可能通过宿主机服务启动应用；若应用在其他网络命名空间中运行，会绕过本次 netns 采集。")
+			out = append(out, base+" may launch applications through host services; applications in another network namespace bypass this netns capture.")
 		case "observe":
-			out = append(out, base+" 可能通过独立服务启动应用或切换命名空间，observe 的目标进程树和 TCP 表可能无法覆盖应用。")
+			out = append(out, base+" may use external services or switch namespaces; the observed process tree and TCP tables may not cover the application.")
 		}
 	}
 	if mode == "preload" {
 		if inherited := os.Getenv("LD_PRELOAD"); inherited != "" {
-			out = append(out, "检测到已有 LD_PRELOAD（可能含 proxychains 等注入库）；当前 preload 会覆盖该设置，目标原有套壳行为可能改变。可尝试 netns 或 observe。")
+			out = append(out, "existing LD_PRELOAD detected (possibly proxychains); preload mode replaces it and may change wrapper behavior. Try netns or observe.")
 		}
 		switch base {
 		case "proxychains", "proxychains4":
-			out = append(out, "proxychains 会设置自己的 LD_PRELOAD，可能覆盖 netinspect 注入；即使目标正常联网也可能无法采集。可尝试 netns 或 observe。")
+			out = append(out, "proxychains sets its own LD_PRELOAD and may replace netinspect injection; network access may work without capture. Try netns or observe.")
 		case "sudo", "su", "doas":
-			out = append(out, base+" 的提权/环境清理可能移除 LD_PRELOAD，后续程序可能无法采集；可考虑使用 netns。")
+			out = append(out, base+" may remove LD_PRELOAD during privilege/environment changes, preventing capture of subsequent programs; consider netns.")
 		}
 		path, err := exec.LookPath(command[0])
 		if err == nil {
@@ -68,12 +68,12 @@ func compatibilityWarnings(mode string, command []string) []string {
 			}
 		}
 		if loopback {
-			out = append(out, "代理环境变量指向 localhost/回环地址；netns 内的回环地址不属于宿主机，宿主机代理通常不可达。需配置可达的代理地址或桥接；这里不会自动改写代理配置。")
+			out = append(out, "proxy environment points to localhost/loopback; namespace loopback is separate from the host. Configure a reachable proxy address or bridge; proxy settings are not rewritten automatically.")
 		}
 	}
 	if mode == "observe" {
 		if _, err := os.ReadFile("/proc/net/tcp"); err != nil {
-			out = append(out, fmt.Sprintf("observe 无法读取 /proc/net/tcp：%v；不能正常枚举 TCP 连接。", err))
+			out = append(out, fmt.Sprintf("observe cannot read /proc/net/tcp: %v; TCP enumeration is unavailable.", err))
 		}
 	}
 	return out
@@ -82,7 +82,7 @@ func compatibilityWarnings(mode string, command []string) []string {
 func executableWarnings(path string) []string {
 	var warnings []string
 	if info, err := os.Stat(path); err == nil && info.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 {
-		warnings = append(warnings, "目标可执行文件具有 setuid/setgid 位，动态加载器可能忽略 LD_PRELOAD；preload 不能保证生效。")
+		warnings = append(warnings, "target has setuid/setgid bits; the dynamic loader may ignore LD_PRELOAD. Capture is not guaranteed.")
 	}
 	f, err := elf.Open(path)
 	if err != nil {
@@ -97,7 +97,7 @@ func executableWarnings(path string) []string {
 		}
 	}
 	if !dynamic {
-		warnings = append(warnings, "目标 ELF 没有动态解释器（静态链接或自定义加载方式），LD_PRELOAD 无法按常规方式注入；建议使用 netns、ptrace 或 observe。")
+		warnings = append(warnings, "target ELF has no dynamic interpreter (static linking or custom loading); normal LD_PRELOAD injection is unavailable. Try netns, ptrace or observe.")
 	}
 	return warnings
 }
@@ -138,15 +138,15 @@ func monitorTarget(cfg Config, pid int, expectedNS string) func() {
 			case "preload":
 				data, err := os.ReadFile(proc + "/maps")
 				if os.IsPermission(err) {
-					warn("maps", "没有权限读取目标内存映射，无法确认注入库是否加载；可能发生权限切换或受 /proc 访问策略限制。")
+					warn("maps", "cannot read target memory maps; injection cannot be confirmed, possibly due to privilege changes or /proc access restrictions.")
 				} else if err == nil && len(data) > 0 && !strings.Contains(string(data), "libnetinspect.so") {
-					warn("injection", "当前目标 PID 未加载 libnetinspect.so：可能清除了 LD_PRELOAD、切换了可执行文件或进入沙箱；该进程的 preload 采集未确认生效。")
+					warn("injection", "target PID has not loaded libnetinspect.so: LD_PRELOAD may have been cleared, the executable replaced or a sandbox entered. Capture is unconfirmed.")
 				}
 			}
 			if expectedNS != "" {
 				actual, err := os.Readlink(proc + "/ns/net")
 				if err == nil && actual != expectedNS {
-					warn("namespace", "目标进入了不同的网络命名空间，当前 TCP 视图/重定向规则可能无法覆盖它的流量。")
+					warn("namespace", "target entered another network namespace; current TCP tables/redirection rules may not cover its traffic.")
 				}
 			}
 		}
@@ -163,10 +163,10 @@ func warnNoRecords(cfg Config, stats store.Stats, started int64, runErr error) {
 		return
 	}
 	reason := map[string]string{
-		"preload": "可能没有发起受支持的 TCP 连接，或子进程没有继承注入、通过已有实例/外部服务联网。",
-		"ptrace":  "可能没有受支持的 TCP connect，或跟踪权限、沙箱、套壳限制了采集。",
-		"netns":   "可能没有受支持的 TCP/DNS 流量，或实际联网进程位于本命名空间之外。",
-		"observe": "可能没有 TCP 连接，连接短于 200ms 轮询窗口，或进程归属/权限/命名空间不在观察范围。",
+		"preload": "There may be no supported TCP connections, injection may not be inherited, or traffic may use existing instances/external services.",
+		"ptrace":  "There may be no supported TCP connect calls, or tracing permissions, sandboxes or wrappers may limit capture.",
+		"netns":   "There may be no supported TCP/DNS traffic, or the network process may be outside this namespace.",
+		"observe": "There may be no TCP connections, connections shorter than the 200ms polling window, or process/permission/namespace limits.",
 	}[cfg.Mode]
-	cliui.Printf("! WARN [%s]: 本次未采集到记录；这不能证明目标没有联网或采集一定失效。%s\n", cfg.Mode, reason)
+	cliui.Printf("! WARN [%s]: No records captured; this does not prove the target had no network traffic or capture failed. %s\n", cfg.Mode, reason)
 }

@@ -16,7 +16,7 @@ import (
 	"netinspect/internal/session"
 )
 
-const modeHelp = "--mode MODE  preload（默认）| ptrace | netns | observe"
+const modeHelp = "--mode MODE  preload (default)| ptrace | netns | observe"
 
 type fileConfig struct {
 	TargetUser  *string `json:"user"`
@@ -45,7 +45,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		}
 		if !strings.HasPrefix(a, "-") {
 			if requireSeparator {
-				return cfg, fmt.Errorf("使用 run 或 netinspect 选项时，目标命令前必须添加 --（例如 netinspect --mode observe -- %s）", a)
+				return cfg, fmt.Errorf("with run or netinspect options, add -- before the target command (example: netinspect --mode observe -- %s)", a)
 			}
 			break
 		}
@@ -64,23 +64,23 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 				i++
 				if i >= len(args) {
 					if key == "--mode" {
-						return cfg, fmt.Errorf("--mode 需要一个值\n%s", modeHelp)
+						return cfg, fmt.Errorf("--mode requires a value\n%s", modeHelp)
 					}
-					return cfg, fmt.Errorf("%s 需要一个值", key)
+					return cfg, fmt.Errorf("%s requires a value", key)
 				}
 				value = args[i]
 			}
 			if key == "--mode" && (value == "" || strings.HasPrefix(value, "--")) {
-				return cfg, fmt.Errorf("--mode 需要一个值\n%s", modeHelp)
+				return cfg, fmt.Errorf("--mode requires a value\n%s", modeHelp)
 			}
 			if key == "--config" {
 				explicit = value
 				if value == "" {
-					return cfg, fmt.Errorf("--config 不能为空")
+					return cfg, fmt.Errorf("--config cannot be empty")
 				}
 			}
 		default:
-			return cfg, fmt.Errorf("未知选项 %s；查看 netinspect --help", key)
+			return cfg, fmt.Errorf("unknown option %s; see netinspect --help", key)
 		}
 	}
 	paths := []string{}
@@ -108,12 +108,12 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		if err == nil {
 			var extra any
 			if dec.Decode(&extra) != io.EOF {
-				err = fmt.Errorf("配置必须只有一个 JSON 对象")
+				err = fmt.Errorf("configuration must contain exactly one JSON object")
 			}
 		}
 		f.Close()
 		if err != nil {
-			return cfg, fmt.Errorf("配置 %s: %w", path, err)
+			return cfg, fmt.Errorf("config %s: %w", path, err)
 		}
 		if fc.TargetUser != nil {
 			cfg.TargetUser = *fc.TargetUser
@@ -139,7 +139,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		if fc.KeepAlive != nil {
 			cfg.KeepAlive, err = time.ParseDuration(*fc.KeepAlive)
 			if err != nil {
-				return cfg, fmt.Errorf("配置 %s: %w", path, err)
+				return cfg, fmt.Errorf("config %s: %w", path, err)
 			}
 		}
 	}
@@ -168,28 +168,28 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		return cfg, err
 	}
 	if cfg.MemoryMB < 1 || cfg.MemoryMB > 1048576 {
-		return cfg, fmt.Errorf("memory-mb 必须在 1–1048576 之间")
+		return cfg, fmt.Errorf("memory-mb must be between 1 and 1048576")
 	}
 	if cfg.KeepAlive < 0 {
-		return cfg, fmt.Errorf("keep-alive 不能为负数")
+		return cfg, fmt.Errorf("keep-alive cannot be negative")
 	}
 	cfg.Mode = strings.ToLower(cfg.Mode)
 	switch cfg.Mode {
 	case "preload", "ptrace", "netns", "observe":
 	default:
-		return cfg, fmt.Errorf("无效 mode %q\n%s", cfg.Mode, modeHelp)
+		return cfg, fmt.Errorf("invalid mode %q\n%s", cfg.Mode, modeHelp)
 	}
 	if cfg.TargetUser != "" && cfg.Mode != "netns" {
-		return cfg, fmt.Errorf("--user 仅适用于 netns 模式")
+		return cfg, fmt.Errorf("--user is only supported in netns mode")
 	}
 	host, p, err := net.SplitHostPort(cfg.Listen)
 	_ = host
 	if err != nil {
-		return cfg, fmt.Errorf("无效 listen %q", cfg.Listen)
+		return cfg, fmt.Errorf("invalid listen address %q", cfg.Listen)
 	}
 	n, err := strconv.Atoi(p)
 	if err != nil || n < 0 || n > 65535 {
-		return cfg, fmt.Errorf("无效端口 %q", p)
+		return cfg, fmt.Errorf("invalid port %q", p)
 	}
 	cfg.Command = fs.Args()
 	if len(cfg.Command) == 0 {
@@ -202,7 +202,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 
 func withPort(listen string, port int) (string, error) {
 	if port < 0 || port > 65535 {
-		return "", fmt.Errorf("端口必须在 0–65535 之间")
+		return "", fmt.Errorf("port must be between 0 and 65535")
 	}
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil {
@@ -213,13 +213,13 @@ func withPort(listen string, port int) (string, error) {
 
 func stopCmd(args []string) error {
 	fs := flag.NewFlagSet("stop", flag.ContinueOnError)
-	url := fs.String("url", "", "面板 URL")
-	token := fs.String("token", "", "实例控制令牌")
+	url := fs.String("url", "", "Dashboard URL")
+	token := fs.String("token", "", "Session control token")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *url == "" || *token == "" || fs.NArg() != 0 {
-		return fmt.Errorf("用法: netinspect stop --url URL --token TOKEN")
+		return fmt.Errorf("Usage: netinspect stop --url URL --token TOKEN")
 	}
 	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(*url, "/")+"/api/shutdown", nil)
 	if err != nil {
@@ -233,8 +233,8 @@ func stopCmd(args []string) error {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("关闭失败: %s", res.Status)
+		return fmt.Errorf("shutdown failed: %s", res.Status)
 	}
-	fmt.Println("✓ 面板已关闭")
+	fmt.Println("✓ Dashboard stopped")
 	return nil
 }

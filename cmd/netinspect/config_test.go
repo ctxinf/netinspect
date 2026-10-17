@@ -84,7 +84,7 @@ func TestMissingCommandSeparator(t *testing.T) {
 		{"--port", "19000", "curl"},
 		{"--config", "settings.json", "curl"},
 	} {
-		if _, err := parseRun(args, "preload"); err == nil || !strings.Contains(err.Error(), "必须添加 --") {
+		if _, err := parseRun(args, "preload"); err == nil || !strings.Contains(err.Error(), "add -- before the target command") {
 			t.Fatalf("args=%q error=%v", args, err)
 		}
 	}

@@ -86,11 +86,11 @@ func Run(cfg Config) error {
 		return fmt.Errorf("no command given")
 	}
 	if cfg.Mode == "netns" && os.Geteuid() != 0 {
-		return fmt.Errorf("netns 需要 root 权限创建网络命名空间；请通过 sudo 启动，目标程序默认恢复为 sudo 前的用户")
+		return fmt.Errorf("netns requires root to create a network namespace; launch with sudo (the target defaults to the original sudo user)")
 	}
 
 	if cfg.Mode != "netns" && cfg.TargetUser != "" {
-		return fmt.Errorf("--user 仅适用于 netns 模式")
+		return fmt.Errorf("--user is only supported in netns mode")
 	}
 	if cfg.Mode == "netns" {
 		identity, err := resolveTargetIdentity(cfg.TargetUser)
@@ -151,7 +151,7 @@ type runtimeState struct {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 func retain(cfg Config, runErr error) {
-	result := "成功"
+	result := "success"
 	if runErr != nil {
 		result = runErr.Error()
 	}
@@ -159,11 +159,11 @@ func retain(cfg Config, runErr error) {
 	if runErr != nil {
 		mark = "!"
 	}
-	cliui.Printf("\n%s 目标程序已结束 · %s\n", mark, result)
+	cliui.Printf("\n%s Target exited · %s\n", mark, result)
 	if cfg.KeepAlive == 0 {
 		return
 	}
-	cliui.Printf("面板将继续运行 %s，至 %s；可在网页点击「关闭服务」。\n或用 %s stop --url %s --token %s 强制停止\n或用 Ctrl+C 直接结束\n", cfg.KeepAlive, time.Now().Add(cfg.KeepAlive).Format("15:04:05"), shellQuote(cfg.ExePath), shellQuote(cfg.runtime.url), cfg.runtime.token)
+	cliui.Printf("Dashboard stays available for %s, until %s; use Shut down in the dashboard.\nOr run %s stop --url %s --token %s\nOr press Ctrl+C to stop\n", cfg.KeepAlive, time.Now().Add(cfg.KeepAlive).Format("15:04:05"), shellQuote(cfg.ExePath), shellQuote(cfg.runtime.url), cfg.runtime.token)
 	timer := time.NewTimer(cfg.KeepAlive)
 	defer timer.Stop()
 	sig := make(chan os.Signal, 1)
@@ -174,7 +174,7 @@ func retain(cfg Config, runErr error) {
 	case <-cfg.runtime.done:
 	case <-sig:
 	}
-	cliui.Printf("· 面板已关闭，内存数据已释放\n")
+	cliui.Printf("· Dashboard stopped; in-memory records released\n")
 }
 
 func dashboardPort(listen string) int {
@@ -194,7 +194,7 @@ func printBanner() {
 }
 
 func printPanel(cfg Config) {
-	cliui.Printf("· 面板: %s\n", cfg.runtime.url)
+	cliui.Printf("· Dashboard: %s\n", cfg.runtime.url)
 	if cfg.OpenBrowser {
 		openBrowser(cfg.runtime.url, cfg.identity)
 	}
@@ -276,7 +276,7 @@ func runPreload(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) err
 
 	dashPort := dashboardPort(cfg.Listen)
 
-	cliui.Printf("· TCP: 代理入口 127.0.0.1:%d\n", proxyPort)
+	cliui.Printf("· TCP: proxy endpoint 127.0.0.1:%d\n", proxyPort)
 
 	cmd := exec.Command(cfg.Command[0], cfg.Command[1:]...)
 	cmd.Env = append(os.Environ(),
@@ -352,7 +352,7 @@ func runPtrace(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) erro
 
 	dashPort := dashboardPort(cfg.Listen)
 
-	cliui.Printf("· TCP: 透明代理入口 127.0.0.1:[::1]:%d (ptrace 改写 connect)\n", proxyPort)
+	cliui.Printf("· TCP: transparent proxy endpoint 127.0.0.1:[::1]:%d (ptrace rewrites connect)\n", proxyPort)
 
 	printPanel(cfg)
 	endOutput := cliui.TargetOutput()
@@ -388,8 +388,8 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 	}
 	defer n.Cleanup()
 
-	cliui.Printf("· netns: %s subnet=%s proxy=127.0.0.1:%d (ns内)\n", n.Name, n.Subnet, proxyPort)
-	cliui.Printf("· DNS: 转发器 %s:53 -> 上游 %s\n", n.NSIP, n.UpstreamDNS)
+	cliui.Printf("· netns: %s subnet=%s proxy=127.0.0.1:%d (inside namespace)\n", n.Name, n.Subnet, proxyPort)
+	cliui.Printf("· DNS: forwarder %s:53 -> upstream %s\n", n.NSIP, n.UpstreamDNS)
 
 	agent := n.Exec(cfg.ExePath, "__agent",
 		"--sid", sid,
@@ -444,7 +444,7 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 	if err == nil {
 		res.Body.Close()
 	} else {
-		cliui.Printf("! 无法更新 netns 会话状态: %v\n", err)
+		cliui.Printf("! Cannot update netns session state: %v\n", err)
 	}
 	// The host store has no connection data in netns mode; use agent statistics.
 	if response, err := client.Get(dashURL + "/api/session"); err == nil {

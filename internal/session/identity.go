@@ -24,7 +24,7 @@ func resolveTargetIdentity(explicit string) (*targetIdentity, error) {
 		selector = os.Getenv("SUDO_UID")
 		if selector != "" {
 			if _, err := strconv.ParseUint(selector, 10, 32); err != nil {
-				return nil, fmt.Errorf("无效 SUDO_UID %q", selector)
+				return nil, fmt.Errorf("invalid SUDO_UID %q", selector)
 			}
 		}
 	}
@@ -39,18 +39,18 @@ func resolveTargetIdentity(explicit string) (*targetIdentity, error) {
 		u, err = user.Lookup(selector)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("netns 目标用户 %q: %w", selector, err)
+		return nil, fmt.Errorf("netns target user %q: %w", selector, err)
 	}
 	gid := u.Gid
 	if explicit == "" && os.Getenv("SUDO_GID") != "" {
 		gid = os.Getenv("SUDO_GID")
 	}
 	if _, err := strconv.ParseUint(gid, 10, 32); err != nil {
-		return nil, fmt.Errorf("无效目标 GID %q", gid)
+		return nil, fmt.Errorf("invalid target GID %q", gid)
 	}
 	path, err := exec.LookPath("setpriv")
 	if err != nil {
-		return nil, fmt.Errorf("netns 目标降权需要 setpriv（util-linux）: %w", err)
+		return nil, fmt.Errorf("netns target privilege drop requires setpriv (util-linux): %w", err)
 	}
 	return &targetIdentity{user: u, gid: gid, setpriv: path}, nil
 }

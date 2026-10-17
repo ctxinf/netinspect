@@ -164,7 +164,7 @@ func socketInodes(pid int, warn func(string)) []string {
 	fds, err := os.ReadDir(fmt.Sprintf("/proc/%d/fd", pid))
 	if err != nil {
 		if os.IsPermission(err) && warn != nil {
-			warn("无法读取进程套接字描述符（权限不足）；部分目标连接不能归属到进程。")
+			warn("cannot read process socket descriptors (permission denied); some connections cannot be attributed to a process.")
 		}
 		return nil
 	}
@@ -186,7 +186,7 @@ func readTCP(warn func(string)) []tcpEntry {
 		data, err := os.ReadFile(f)
 		if err != nil {
 			if warn != nil && (f == "/proc/net/tcp" || !os.IsNotExist(err)) {
-				warn("无法读取 " + f + "：" + err.Error() + "；对应 TCP 连接无法采集。")
+				warn("cannot read " + f + ": " + err.Error() + "; corresponding TCP connections cannot be captured.")
 			}
 			continue
 		}

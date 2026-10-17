@@ -19,7 +19,7 @@ func TestSandboxModeDiagnostics(t *testing.T) {
 	clearProxyEnvironment(t)
 	for _, mode := range []string{"preload", "ptrace", "netns", "observe"} {
 		warnings := strings.Join(compatibilityWarnings(mode, []string{"/usr/bin/flatpak", "run", "example.App"}), " ")
-		if !strings.Contains(warnings, "沙箱") && !strings.Contains(warnings, "命名空间") {
+		if !strings.Contains(warnings, "sandbox") && !strings.Contains(warnings, "namespace") {
 			t.Fatalf("missing %s warning: %s", mode, warnings)
 		}
 	}
@@ -32,7 +32,7 @@ func TestProxyEnvironmentDiagnosticsDoNotExposeCredentials(t *testing.T) {
 	clearProxyEnvironment(t)
 	t.Setenv("https_proxy", "http://secret-user:secret-password@127.0.0.1:7890")
 	warnings := strings.Join(compatibilityWarnings("netns", []string{"/bin/true"}), " ")
-	if !strings.Contains(warnings, "回环") || strings.Contains(warnings, "secret") {
+	if !strings.Contains(warnings, "loopback") || strings.Contains(warnings, "secret") {
 		t.Fatalf("bad warning: %s", warnings)
 	}
 	t.Setenv("https_proxy", "http://192.0.2.1:7890")
@@ -61,7 +61,7 @@ func TestStaticAndPrivilegedExecutableDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	warnings := strings.Join(executableWarnings(path), " ")
-	if !strings.Contains(warnings, "静态链接") {
+	if !strings.Contains(warnings, "static linking") {
 		t.Fatalf("missing static warning: %s", warnings)
 	}
 	script := filepath.Join(dir, "script")
