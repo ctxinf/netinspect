@@ -414,9 +414,8 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 		"--control-token", cfg.runtime.token,
 		"--memory-mb", strconv.FormatInt(cfg.MemoryMB, 10),
 	)
-	if cfg.UpstreamProxy != "" {
-		agent.Env = append(os.Environ(), "NETINSPECT_UPSTREAM_PROXY="+cfg.UpstreamProxy)
-	}
+	// Pass even an empty value so inherited helper state cannot select an upstream.
+	agent.Env = append(os.Environ(), "NETINSPECT_UPSTREAM_PROXY="+cfg.UpstreamProxy)
 	agent.Stdout, agent.Stderr = os.Stdout, os.Stderr
 	if err := agent.Start(); err != nil {
 		return fmt.Errorf("start agent: %w", err)
