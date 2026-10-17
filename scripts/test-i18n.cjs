@@ -89,3 +89,9 @@ test("table, detail and session render in every locale without translating captu
     assert.ok(element("limit-notice").textContent.includes("3"));
   }
 });
+
+test("remote-DNS upstream destinations render even without a resolved local IP", () => {
+  const { context } = load();
+  const target = vm.runInContext('value({conn:{orig_host:"target.invalid",orig_port:443}}, "dest")', context);
+  assert.equal(target, "target.invalid:443");
+});

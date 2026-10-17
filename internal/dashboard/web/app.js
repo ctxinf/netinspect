@@ -171,14 +171,11 @@ function value(i, key) {
     return (host.includes(":") ? "[" + host + "]" : host) + ":" + c.orig_port;
   }
   if (key === "source") return c?.source || d?.source || "—";
-  if (key === "dest")
-    return c
-      ? c.orig_ip
-        ? (c.orig_ip.includes(":") ? "[" + c.orig_ip + "]" : c.orig_ip) +
-          ":" +
-          c.orig_port
-        : "—"
-      : d?.dest || "—";
+  if (key === "dest") {
+    if (!c) return d?.dest || "—";
+    const host = c.orig_ip || c.orig_host;
+    return host ? (host.includes(":") ? "[" + host + "]" : host) + ":" + c.orig_port : "—";
+  }
   if (key === "process") return c?.comm || d?.comm || "—";
   if (key === "pid") return c?.pid || d?.pid || "—";
   if (key === "protocol") return c?.proto || d?.qtype || "TCP";
