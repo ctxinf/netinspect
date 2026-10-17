@@ -95,3 +95,14 @@ test("remote-DNS upstream destinations render even without a resolved local IP",
   const target = vm.runInContext('value({conn:{orig_host:"target.invalid",orig_port:443}}, "dest")', context);
   assert.equal(target, "target.invalid:443");
 });
+
+test("session status displays configured upstream and hides it for direct sessions", () => {
+  const { context, element } = load();
+  vm.runInContext('renderSession({session:{upstream_proxy:"socks5h://127.0.0.1:1080"},stats:{}})', context);
+  assert.equal(element("upstream-config").hidden, false);
+  assert.equal(element("upstream-proxy").textContent, "socks5h://127.0.0.1:1080");
+  assert.equal(element("upstream-proxy").title, "socks5h://127.0.0.1:1080");
+  vm.runInContext('renderSession({session:{},stats:{}})', context);
+  assert.equal(element("upstream-config").hidden, true);
+  assert.equal(element("upstream-proxy").textContent, "");
+});

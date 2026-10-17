@@ -111,7 +111,8 @@ window.netinspectMessages = {
     "Sort column: {column}": "Sort column: {column}",
     "Show {column}": "Show {column}",
     "Move {column} up": "Move {column} up",
-    "Move {column} down": "Move {column} down"
+    "Move {column} down": "Move {column} down",
+    "Upstream proxy": "Upstream proxy"
   },
   "zh-CN": {
     "Connecting": "连接中",
@@ -224,7 +225,8 @@ window.netinspectMessages = {
     "Sort column: {column}": "排序列：{column}",
     "Show {column}": "显示{column}",
     "Move {column} up": "上移{column}",
-    "Move {column} down": "下移{column}"
+    "Move {column} down": "下移{column}",
+    "Upstream proxy": "上游代理"
   },
   "es": {
     "Connecting": "Conectando",
@@ -337,7 +339,8 @@ window.netinspectMessages = {
     "Sort column: {column}": "Columna: {column}",
     "Show {column}": "Mostrar {column}",
     "Move {column} up": "Subir {column}",
-    "Move {column} down": "Bajar {column}"
+    "Move {column} down": "Bajar {column}",
+    "Upstream proxy": "Proxy de salida"
   },
   "fr": {
     "Connecting": "Connexion",
@@ -450,7 +453,8 @@ window.netinspectMessages = {
     "Sort column: {column}": "Colonne de tri : {column}",
     "Show {column}": "Afficher {column}",
     "Move {column} up": "Monter {column}",
-    "Move {column} down": "Descendre {column}"
+    "Move {column} down": "Descendre {column}",
+    "Upstream proxy": "Proxy amont"
   },
   "de": {
     "Connecting": "Verbindung wird hergestellt",
@@ -563,7 +567,8 @@ window.netinspectMessages = {
     "Sort column: {column}": "Sortierspalte: {column}",
     "Show {column}": "{column} anzeigen",
     "Move {column} up": "{column} nach oben",
-    "Move {column} down": "{column} nach unten"
+    "Move {column} down": "{column} nach unten",
+    "Upstream proxy": "Upstream-Proxy"
   },
   "ja": {
     "Connecting": "接続中",
@@ -676,7 +681,8 @@ window.netinspectMessages = {
     "Sort column: {column}": "並べ替え列: {column}",
     "Show {column}": "{column} を表示",
     "Move {column} up": "{column} を上へ",
-    "Move {column} down": "{column} を下へ"
+    "Move {column} down": "{column} を下へ",
+    "Upstream proxy": "上流プロキシ"
   },
   "pt": {
     "Connecting": "Conectando",
@@ -789,6 +795,7 @@ window.netinspectMessages = {
     "Sort column: {column}": "Coluna: {column}",
     "Show {column}": "Mostrar {column}",
     "Move {column} up": "Mover {column} para cima",
-    "Move {column} down": "Mover {column} para baixo"
+    "Move {column} down": "Mover {column} para baixo",
+    "Upstream proxy": "Proxy de saída"
   }
 };

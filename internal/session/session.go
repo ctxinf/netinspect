@@ -116,11 +116,16 @@ func Run(cfg Config) error {
 	warnDesktopHandoff(cfg.Command)
 	sid := newSID()
 	cfg.runtime = &runtimeState{done: make(chan struct{}), token: newSID() + newSID() + newSID() + newSID()}
+	upstreamName := ""
+	if upstream != nil {
+		upstreamName = upstream.Name()
+	}
 	st := store.NewWithLimit(store.Session{
-		ID:        sid,
-		StartedAt: time.Now().UnixMilli(),
-		Command:   strings.Join(cfg.Command, " "),
-		Mode:      cfg.Mode,
+		ID:            sid,
+		StartedAt:     time.Now().UnixMilli(),
+		Command:       strings.Join(cfg.Command, " "),
+		Mode:          cfg.Mode,
+		UpstreamProxy: upstreamName,
 	}, cfg.MemoryMB<<20)
 	hub := dashboard.NewHub()
 

@@ -23,11 +23,16 @@ func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS, t
 	if err != nil {
 		return err
 	}
+	upstreamName := ""
+	if upstream != nil {
+		upstreamName = upstream.Name()
+	}
 	st := store.NewWithLimit(store.Session{
-		ID:        sid,
-		StartedAt: time.Now().UnixMilli(),
-		Command:   command,
-		Mode:      "netns",
+		ID:            sid,
+		StartedAt:     time.Now().UnixMilli(),
+		Command:       command,
+		Mode:          "netns",
+		UpstreamProxy: upstreamName,
 	}, limit)
 	hub := dashboard.NewHub()
 	px := proxy.New(proxy.Config{

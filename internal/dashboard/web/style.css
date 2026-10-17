@@ -1378,3 +1378,15 @@ main > .foot {
   border-radius: 6px;
   padding: 5px;
 }
+
+.session-line .upstream-config {
+  min-width: 0;
+  max-width: 100%;
+  border-left: 1px solid var(--line);
+  padding-left: 10px;
+}
+.session-line .upstream-config strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -352,6 +352,10 @@ function renderSession(data) {
   $("build-info").textContent = data.version?.build || "local";
   $("session-id").textContent = "#" + (s.id || "—");
   $("mode").textContent = s.mode || "—";
+  const upstream = s.upstream_proxy || "";
+  $("upstream-config").hidden = !upstream;
+  $("upstream-proxy").textContent = upstream;
+  $("upstream-proxy").title = upstream;
   $("command").textContent = s.command || "—";
   $("command").title = s.command || "";
   const ended = !!s.ended_at;

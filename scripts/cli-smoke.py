@@ -212,6 +212,15 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
                 self.wfile.write(b'HTTP/1.1 200 OK\r\nContent-Length: 15\r\nConnection: close\r\n\r\n' + body)
                 self.wfile.flush()
 
+        # Session metadata exposes only the configured proxy endpoint, even before traffic.
+        upstream_session, upstream_url, upstream_token, _ = launch([
+            '--upstream-proxy', 'http://user:secret@127.0.0.1:3128', '--', 'true'])
+        snapshot = request(upstream_url)
+        assert snapshot['session']['upstream_proxy'] == 'http://127.0.0.1:3128', snapshot
+        assert 'secret' not in json.dumps(snapshot) and 'user:' not in json.dumps(snapshot)
+        request(upstream_url, '/api/shutdown', upstream_token)
+        assert upstream_session.wait(timeout=5) == 0
+
         upstream_requests = []
         with socketserver.TCPServer(('127.0.0.1', 0), UpstreamHandler) as proxy_server:
             thread = threading.Thread(target=proxy_server.serve_forever, daemon=True)

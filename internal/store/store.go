@@ -18,12 +18,13 @@ import (
 
 // Session is the single live session.
 type Session struct {
-	ID           string `json:"id"`
-	StartedAt    int64  `json:"started_at"`
-	EndedAt      int64  `json:"ended_at"`
-	Command      string `json:"command"`
-	Mode         string `json:"mode"`
-	DashboardURL string `json:"dashboard_url"`
+	ID            string `json:"id"`
+	StartedAt     int64  `json:"started_at"`
+	EndedAt       int64  `json:"ended_at"`
+	Command       string `json:"command"`
+	Mode          string `json:"mode"`
+	DashboardURL  string `json:"dashboard_url"`
+	UpstreamProxy string `json:"upstream_proxy,omitempty"` // Display address only; never credentials.
 }
 
 // Conn is one intercepted TCP connection (metadata only).
