@@ -4,12 +4,18 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -21,10 +27,11 @@ jobs:
       CGO_ENABLED: '0'
       GOOS: linux
       GOARCH: amd64
-      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
       - uses: actions/setup-go@v6
@@ -45,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/package
-          build_id="${GITHUB_SHA:0:12}"
+          build_id="$(git rev-parse --short=12 HEAD)"
           go build -trimpath \
             -ldflags "-s -w -X=netinspect/internal/version.Tag=${RELEASE_TAG} -X=netinspect/internal/version.Build=${build_id}" \
             -o dist/package/netinspect ./cmd/netinspect
@@ -61,6 +68,15 @@ jobs:
           tar -C dist/package -czf dist/netinspect_linux_amd64.tar.gz netinspect README.md LICENSE
           cd dist
           sha256sum netinspect_linux_amd64.tar.gz > SHA256SUMS
+
+      - name: Save build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: netinspect-linux-amd64
+          path: |
+            dist/netinspect_linux_amd64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
 
       - name: Publish GitHub Release
         env:
@@ -82,7 +98,7 @@ jobs:
           fi
 
       - name: Check Homebrew credentials
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: ${{ !contains(env.RELEASE_TAG, '-') }}
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
@@ -92,7 +108,7 @@ jobs:
           fi
 
       - name: Check out Homebrew tap
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: ${{ !contains(env.RELEASE_TAG, '-') }}
         uses: actions/checkout@v6
         with:
           repository: ctxinf/homebrew-tap
@@ -100,7 +116,7 @@ jobs:
           path: homebrew-tap
 
       - name: Update Homebrew formula
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: ${{ !contains(env.RELEASE_TAG, '-') }}
         env:
           RELEASE_REPOSITORY: ${{ github.repository }}
         shell: bash

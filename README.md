@@ -35,7 +35,25 @@ git push origin v0.1.0
 
 # Linux x86_64 上安装
 brew install ctxinf/tap/netinspect
+
+# 或下载并校验最新 Release，安装到 ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
+
+# 指定版本和安装目录（目录需要当前用户有写入权限）
+curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | \
+  NETINSPECT_VERSION=v0.1.0 NETINSPECT_INSTALL_DIR="$HOME/.local/bin" sh
 ```
+
+以上匿名安装要求仓库公开。私有仓库需先导出具有仓库 Contents 读取权限的
+`GH_TOKEN`（安装时还需要 `python3`），再执行：
+
+```bash
+curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+  https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
+```
+
+如果 tag 推送未触发，或需要重新发布，在 Actions → Release → Run workflow 中填写
+现有 tag。构建产物也会保存在该次运行的 Artifacts 中。
 
 ### 运行
 
