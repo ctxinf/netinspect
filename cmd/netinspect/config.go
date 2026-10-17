@@ -225,6 +225,8 @@ func withPort(listen string, port int) (string, error) {
 
 func stopCmd(args []string) error {
 	fs := flag.NewFlagSet("stop", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.Usage = printStopHelp
 	url := fs.String("url", "", "Dashboard URL")
 	token := fs.String("token", "", "Session control token")
 	if err := fs.Parse(args); err != nil {

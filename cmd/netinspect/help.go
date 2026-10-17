@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
+	"netinspect/internal/version"
 )
 
 const usage = `Monitor a Linux process and its network connections.
@@ -26,17 +27,17 @@ Commands:
   help                Print this help
 
 Options:
-      --mode <MODE>       Capture mode: preload, ptrace, netns, observe [default: preload]
-      --user <USER>       Target username or UID for netns [default: original sudo user]
-      --listen <ADDRESS>  Dashboard address [default: 127.0.0.1:17890]
-      --port <PORT>       Override the dashboard port; busy ports increment automatically
-      --keep-alive <TIME> Keep dashboard after target exits; 0 disables [default: 30m]
-      --open-browser     Open dashboard automatically [default: true; use =false to disable]
-      --memory-mb <MB>    Record storage budget in MiB [default: 128]
-      --upstream-proxy <URL> TCP via http(s):// or socks5(h)://; optional user:password
-      --config <FILE>     Load only this JSON configuration file
-      --version          Print version information
-  -h, --help             Print help
+      --mode <MODE>            Capture mode: preload, ptrace, netns, observe [default: preload]
+      --user <USER>            Target username or UID for netns [default: original sudo user]
+      --listen <ADDRESS>       Dashboard address [default: 127.0.0.1:17890]
+      --port <PORT>            Override the dashboard port; busy ports increment automatically
+      --keep-alive <TIME>      Keep dashboard after target exits; 0 disables [default: 30m]
+      --open-browser           Open dashboard automatically [default: true; use =false to disable]
+      --memory-mb <MB>         Record storage budget in MiB [default: 128]
+      --upstream-proxy <URL>   TCP via http(s):// or socks5(h)://; optional user:password
+      --config <FILE>          Load only this JSON configuration file
+      --version                Print version information
+  -h, --help                   Print help
 
 Examples:
   netinspect curl -I https://example.com
@@ -58,12 +59,12 @@ Capture notes:
   At capacity, existing records still update and traffic continues; new records stop.
   Proxy buffers and the Go runtime use additional memory.
   Upstream proxy applies to TCP only (preload, ptrace, netns); DNS/UDP stay direct.
-  socks5 resolves target names locally; socks5h and HTTP(S) resolve at the proxy.
+  socks5 resolves locally; socks5h and HTTP(S) pass available names to the proxy.
+  If the target already resolved a name, the upstream receives its IP.
   In netns, the upstream must be reachable from inside the namespace.
 `
 
-func printHelp() {
-	text := usage
+func printHelpText(text string) {
 	_, noColor := os.LookupEnv("NO_COLOR")
 	_, terminalErr := unix.IoctlGetTermios(int(os.Stdout.Fd()), unix.TCGETS)
 	if !noColor && os.Getenv("TERM") != "dumb" && terminalErr == nil {
@@ -72,6 +73,11 @@ func printHelp() {
 		}
 	}
 	fmt.Print(text)
+}
+
+func printHelp() {
+	fmt.Printf("netinspect %s\n\n", version.Current().Version)
+	printHelpText(usage)
 	if path, err := userConfigPath(); err == nil {
 		fmt.Printf("\nUser config: %s [%s]\n", path, configStatus(path))
 	}
@@ -101,7 +107,7 @@ func configStatus(path string) string {
 
 func initConfigCmd(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("Usage: netinspect init-config\n\nCreate the default user configuration. Existing files are never overwritten.")
+		printHelpText("Create the default user configuration. Existing files are never overwritten.\n\nUsage:\n  netinspect init-config\n\nOptions:\n  -h, --help  Print help\n")
 		return nil
 	}
 	if len(args) != 0 {
@@ -134,5 +140,45 @@ func initConfigCmd(args []string) error {
 		return closeErr
 	}
 	fmt.Printf("Created configuration: %s\n", path)
+	return nil
+}
+
+func printStopHelp() {
+	printHelpText(`Shut down a dashboard after its target command has exited.
+
+Usage:
+  netinspect stop --url <URL> --token <TOKEN>
+
+Options:
+      --url <URL>              Dashboard URL printed by the session
+      --token <TOKEN>          Session control token printed after the target exits
+  -h, --help           Print help
+`)
+}
+
+func helpCmd(args []string) error {
+	if len(args) == 0 {
+		printHelp()
+		return nil
+	}
+	if len(args) != 1 {
+		return fmt.Errorf("usage: netinspect help [COMMAND]")
+	}
+	switch args[0] {
+	case "run":
+		printHelp()
+	case "stop":
+		printStopHelp()
+	case "skills":
+		return skillsCmd(nil)
+	case "init-config":
+		return initConfigCmd([]string{"--help"})
+	case "version":
+		printHelpText("Print version information.\n\nUsage:\n  netinspect version\n")
+	case "help":
+		printHelpText("Usage:\n  netinspect help [COMMAND]\n")
+	default:
+		return fmt.Errorf("unknown help command %q", args[0])
+	}
 	return nil
 }

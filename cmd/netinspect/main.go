@@ -22,7 +22,9 @@ func main() {
 		case "version", "--version":
 			fmt.Println("netinspect " + version.Current().Version)
 			return
-		case "help", "-h", "--help":
+		case "help":
+			err = helpCmd(args[1:])
+		case "-h", "--help":
 			printHelp()
 			return
 		case "__agent":

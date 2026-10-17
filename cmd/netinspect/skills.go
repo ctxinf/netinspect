@@ -10,7 +10,7 @@ var skillsFS embed.FS
 
 func skillsCmd(args []string) error {
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help")) {
-		fmt.Println("Usage: netinspect skills <COMMAND>\n\nCommands:\n  list              List bundled agent skills\n  get core [--full]  Print the agent workflow, optionally with API reference")
+		printHelpText("Read bundled guidance for agents using this installed version.\n\nUsage:\n  netinspect skills <COMMAND>\n\nCommands:\n  list              List bundled agent skills\n  get core [--full]  Print the workflow, optionally with API reference\n\nOptions:\n  -h, --help        Print help\n")
 		return nil
 	}
 	if len(args) == 1 && args[0] == "list" {
