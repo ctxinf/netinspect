@@ -1,3 +1,4 @@
 /netinspect
 /modes/preload/libnetinspect.so
 *.md
+!README.en.md

@@ -1,139 +1,284 @@
-# netinspect (Phase 1)
+<h1 align="center">◉ netinspect</h1>
+<p align="center">中文 · <a href="README.en.md">English</a></p>
 
-Linux 进程级网络连接监控。**纯连接级元数据**：五元组、进程、耗时、流量、
-结果、SNI/ALPN、DNS 查询。**不做 MITM、不解密、不看任何内容**。纯内存存储，
-面板关闭后记录丢弃。
+<p align="center">面向 Linux 命令行程序的进程级网络监控工具，在浏览器里查看一次运行的网络连接。</p>
 
-## 构建
+- 在原命令前加上 `netinspect` 即可使用，CLI 启动监控和 Web 面板。
+- 查看连接目标、进程、连接耗时、上下行流量、结果，以及可见的 TLS SNI / ALPN；`netns` 模式还可记录 DNS 查询与应答。
+- Web 面板实时更新，支持状态筛选、搜索、排序、分页、列设置、连接详情和明暗主题。
+- 提供 `preload`、`ptrace`、`netns`、`observe` 四种模式，按目标程序和权限选择。
+- Go 开发，面板和 preload 拦截库内嵌在 binary 中，无需单独部署 Web 服务。
+- 记录只保存在内存中，默认预算 **128 MiB**；命令结束后面板默认保留 **30 分钟**，关闭后释放数据。
+- 仅记录连接元数据，不做 MITM、不解密 TLS、不保存请求或响应正文。
 
-```bash
-make -C modes/preload        # 编出 LD_PRELOAD 的 .so (Go embed 需要)
-go build ./... && go vet ./...
-go build -o netinspect ./cmd/netinspect
-```
+## 目录
 
-## 用法
+- [1. 安装](#1-安装)
+  - [1.1 通过脚本安装](#11-通过脚本安装)
+  - [1.2 直接下载安装](#12-直接下载安装)
+  - [1.3 Homebrew](#13-homebrew)
+  - [1.4 从源码安装](#14-从源码安装)
+- [2. 使用](#2-使用)
+  - [2.1 启动监控](#21-启动监控)
+  - [2.2 查看面板](#22-查看面板)
+  - [2.3 结束与保留记录](#23-结束与保留记录)
+  - [2.4 配置](#24-配置)
+- [3. 模式对比](#3-模式对比)
+- [4. 开发与发布](#4-开发与发布)
+- [许可证](#许可证)
 
-### Release 与 Homebrew
+## 1. 安装
 
-推送 tag 后，GitHub Actions 自动运行测试、构建 Linux amd64 binary，并发布包含
-`netinspect_linux_amd64.tar.gz` 和 `SHA256SUMS` 的 GitHub Release。
-binary 已嵌入 preload 库；该库在 Ubuntu 22.04 上编译，需要 glibc 2.35 或更新版本。
+当前预编译包支持 **Linux x86_64 / amd64**。默认 `preload` 模式使用 glibc 动态库，发布包在 Ubuntu 22.04 上构建，要求 glibc 2.35 或更新版本；其他系统环境可尝试从源码构建。
 
-正式版本使用 `v1.2.3` 或 `1.2.3` 格式。带 `-` 的 tag（如 `v1.2.3-rc.1`）
-发布为 prerelease，不更新 Homebrew。正式发布后自动更新 `ctxinf/homebrew-tap` 的
-`Formula/netinspect.rb`，相同 tag 的工作流可重跑以恢复上传或 tap 更新。
+仓库目前为私有，下载脚本、源码和 Release 均需要有仓库读取权限的 GitHub 账号或 Token。以下 `GH_TOKEN` 应具有 `ctxinf/netinspect` 的 **Contents: Read** 权限。
 
-首次使用前，在本仓库的 Actions secrets 中配置 `HOMEBREW_TAP_TOKEN`：
-使用可访问 `ctxinf/homebrew-tap` 且具有 **Contents: Read and write** 权限的
-fine-grained PAT，并确保允许向 tap 的默认分支直接推送。Release 使用自带的
-`GITHUB_TOKEN`，无需另配。
+<details id="11-通过脚本安装" open>
+<summary>1.1 通过脚本安装</summary>
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
+无需安装 Go。准备 `curl`、`tar`、`sha256sum` 和 `python3`，将有仓库读取权限的 Token 导出为 `GH_TOKEN` 后执行：
 
-# Linux x86_64 上安装
-brew install ctxinf/tap/netinspect
-
-# 或下载并校验最新 Release，安装到 ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
-
-# 指定版本和安装目录（目录需要当前用户有写入权限）
-curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | \
-  NETINSPECT_VERSION=v0.1.0 NETINSPECT_INSTALL_DIR="$HOME/.local/bin" sh
-```
-
-以上匿名安装要求仓库公开。私有仓库需先导出具有仓库 Contents 读取权限的
-`GH_TOKEN`（安装时还需要 `python3`），再执行：
-
-```bash
+```sh
 curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
   https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+netinspect --version
 ```
 
-如果 tag 推送未触发，或需要重新发布，在 Actions → Release → Run workflow 中填写
-现有 tag。构建产物也会保存在该次运行的 Artifacts 中。
+脚本下载最新正式 Release，校验 SHA256 后安装到 `~/.local/bin`。将上面的 `PATH` 设置加入 Shell 配置，后续终端即可直接使用。
 
-### 运行
+也可先下载脚本，再指定版本和安装目录：
 
-```bash
-netinspect                                          # 默认 preload，进入 $SHELL
-netinspect curl -I https://example.com                # 省略 run 和 --
-netinspect run -- ./my-command --help                 # 命令后的参数全部透传
-netinspect --mode observe -- python app.py
-netinspect --port 17890 --keep-alive 10m -- ./my-command
-netinspect --config ./netinspect.json -- ./my-command
+```sh
+curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+  https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh -o /tmp/netinspect-install.sh
+NETINSPECT_VERSION=v0.1.1 NETINSPECT_INSTALL_DIR="$HOME/.local/bin" \
+  sh /tmp/netinspect-install.sh
+```
+
+`NETINSPECT_VERSION` 默认为 `latest`，指定时使用完整 tag；`NETINSPECT_INSTALL_DIR` 需要当前用户有写入权限。更新时重新运行脚本即可。
+
+</details>
+
+<details id="12-直接下载安装">
+<summary>1.2 直接下载安装</summary>
+
+登录 GitHub 后，从 [Releases](https://github.com/ctxinf/netinspect/releases/latest) 下载 `netinspect_linux_amd64.tar.gz` 和 `SHA256SUMS`，放到同一目录：
+
+```sh
+sha256sum -c SHA256SUMS
+tar -xzf netinspect_linux_amd64.tar.gz
+mkdir -p "$HOME/.local/bin"
+install -m 755 netinspect "$HOME/.local/bin/netinspect"
+export PATH="$HOME/.local/bin:$PATH"
+netinspect --version
+```
+
+压缩包包含 `netinspect`、README 和许可证；preload 库和 Web 面板已内嵌，无需额外复制。
+
+</details>
+
+<details id="13-homebrew">
+<summary>1.3 Homebrew</summary>
+
+正式发布会自动将 `Formula/netinspect.rb` 同步到 [ctxinf/homebrew-tap](https://github.com/ctxinf/homebrew-tap)，目前提供 Linux x86_64 的 binary formula。
+
+当前 formula 的下载地址指向私有 Release，尚未配置 Homebrew 的私有资产下载认证；仅添加 tap 不能完成匿名安装。当前请使用上面的 Token 安装脚本或手动下载方式。
+
+</details>
+
+<details id="14-从源码安装">
+<summary>1.4 从源码安装</summary>
+
+需要 Linux、Go **1.27.2 或更新版本**、C 编译器和 `make`。先通过 GitHub CLI 或 Git credential helper 配置私有仓库访问，再构建：
+
+```sh
+git clone https://github.com/ctxinf/netinspect.git
+cd netinspect
+make -C modes/preload
+sh scripts/build.sh -o netinspect
+mkdir -p "$HOME/.local/bin"
+install -m 755 netinspect "$HOME/.local/bin/netinspect"
+export PATH="$HOME/.local/bin:$PATH"
+netinspect --version
+```
+
+必须先构建 `modes/preload/libnetinspect.so`，Go 编译时会将它嵌入 binary。`scripts/build.sh` 写入最近的 tag 和当前 commit，CLI 与面板会显示对应版本信息。
+
+</details>
+
+## 2. 使用
+
+<details id="21-启动监控" open>
+<summary>2.1 在原命令前加上 netinspect</summary>
+
+```sh
+netinspect curl -I https://example.com
+netinspect python app.py
+netinspect run -- ./my-command --help
+```
+
+默认使用 `preload` 模式，适合动态链接程序。静态链接程序（例如常见的 Go binary）可选择 `ptrace`：
+
+```sh
+netinspect --mode ptrace -- ./my-go-program
+```
+
+要监控一个交互式 Shell 中启动的命令，显式传入 Shell：
+
+```sh
+netinspect -- "$SHELL"
+```
+
+**不带参数运行只显示帮助。** 仅 `netinspect command args...` 的快捷形式可省略 `--`；使用 `run` 或 netinspect 选项时，目标命令前必须添加 `--`。分隔符后的参数全部原样传给目标程序。
+
+```sh
+netinspect --mode observe --keep-alive 10m -- python app.py
+netinspect --open-browser=false --port 0 -- curl -I https://example.com
 netinspect --help
 ```
 
-目标命令结束后，会打印执行结果和面板关闭时间；面板默认继续运行 **30 分钟**，
-可查看本次运行的全部内存记录。netinspect 在此期间保持前台运行，退出时保留目标命令的退出码。
-复制终端中打印的 `netinspect stop --url … --token …` 命令，或在网页点击 **结束 Server**，
-即可提前关闭当前实例。目标仍在运行时不允许关闭面板。保留期间也可按 Ctrl+C 退出。
-`--keep-alive 0` 可在目标结束后立即关闭。端口占用时逐一递增直到找到可用端口；
-多个实例各自保存数据、使用各自的停止令牌，互不影响。`--port 0` 由系统分配端口。
+</details>
 
-### 配置文件
+<details id="22-查看面板">
+<summary>2.2 在浏览器中查看连接与详情</summary>
 
-自动读取以下文件，后者覆盖前者，命令行参数优先：
+启动后查看终端打印的面板地址。默认监听 `127.0.0.1:17890`，端口占用时自动递增；`--port 0` 使用系统分配的空闲端口。有桌面环境时默认尝试打开浏览器，可通过 `--open-browser=false` 关闭。
 
-1. `$XDG_CONFIG_HOME/netinspect/config.json`（未设置 XDG 时为 `~/.config/netinspect/config.json`）。
-2. 当前工作目录 `.netinspect.json`。
+- 在「全部」「活动」「已关闭」之间切换，查看连接状态。
+- 搜索目标、进程、IP、SNI 或 DNS 应答；按 `/` 聚焦搜索框。
+- 点击表头或排序菜单调整排序，通过列设置选择显示字段与顺序。
+- 点击记录查看进程、目标、耗时、流量、TLS 或 DNS 详情；字段可见性取决于监控模式。
+- 暂停按钮只暂停页面刷新，后台监控和记录继续运行。
 
-`--config FILE` 使用显式文件替代自动发现；文件缺失、未知字段或格式错误会报错。
-所有字段均可省略。`port` 覆盖同一层的 `listen` 端口，`keep_alive` 使用 Go 时长格式（例如 `30m`、`1h`、`10s`）。
+每次运行都有独立会话、面板端口和停止令牌，可以同时监控多个命令。
+
+</details>
+
+<details id="23-结束与保留记录">
+<summary>2.3 命令结束后继续查看，或提前关闭面板</summary>
+
+目标命令结束后，终端会打印执行结果和面板关闭时间。netinspect 默认继续在前台运行 **30 分钟**，供你查看已有记录，最后保留目标程序的退出码。
+
+```sh
+# 目标结束后保留 10 分钟
+netinspect --keep-alive 10m -- curl -I https://example.com
+
+# 目标结束后立即关闭
+netinspect --keep-alive 0 -- curl -I https://example.com
+```
+
+保留期间可点击面板的关闭服务按钮、按 Ctrl+C，或复制终端打印的停止命令：
+
+```sh
+netinspect stop --url http://127.0.0.1:17890 --token TOKEN_FROM_TERMINAL
+```
+
+目标仍在运行时，不允许通过面板或 `stop` 关闭服务。面板关闭后，本次内存记录释放，不保留跨会话历史。
+
+</details>
+
+<details id="24-配置">
+<summary>2.4 调整默认配置与内存预算</summary>
+
+自动读取以下配置，优先级从低到高：
+
+1. `$XDG_CONFIG_HOME/netinspect/config.json`，未设置 XDG 时为 `~/.config/netinspect/config.json`。
+2. 当前目录 `.netinspect.json`。
+3. 命令行选项。
+
+配置文件需手动创建，所有字段均可省略。示例 `.netinspect.json`：
 
 ```json
 {
   "mode": "preload",
   "listen": "127.0.0.1:17890",
-  "keep_alive": "30m"
+  "keep_alive": "30m",
+  "open_browser": true,
+  "memory_mb": 128
 }
 ```
 
-只有无子命令、无 netinspect 选项的 `netinspect command args...` 快捷形式可省略 `--`。
-使用 `run` 或任何 netinspect 选项且指定目标命令时，必须添加 `--`；省略目标命令仍启动 Shell。
-命令后的参数全部属于目标程序。执行名称为 `run`、`stop`、`help` 的程序时，
-使用 `netinspect -- <command>` 或程序的完整路径以避免与子命令冲突。
+使用 `--config FILE` 时只读取指定文件，替代自动发现；文件缺失、未知字段或格式错误会报错。同一层配置中的 `port` 会覆盖 `listen` 的端口。
 
-| 模式 | 原理 | TCP | DNS | UDP | 说明 |
-|---|---|---|---|---|---|
-| `preload` | LD_PRELOAD 拦截 `connect` → SOCKS5 本地代理 | ✅ | ❌ 不可见 | ❌ | 仅动态链接程序；静态链接不生效 |
-| `ptrace` | ptrace 改写 `connect` syscall → 透明代理 | ✅ | ❌ 不可见 | ❌ | x86_64；静态/Go 程序可用 |
-| `netns` | 独立 netns + iptables REDIRECT + DNS 转发器 | ✅ | ✅ 记录查询 | ❌ | 需 root |
-| `observe` | /proc 轮询，不拦截 | ✅ 元数据 | ❌ | ❌ | 零侵入 |
+```sh
+netinspect --config ./netinspect.json -- python app.py
+netinspect --memory-mb 64 -- python app.py
+```
 
-默认模式为 `preload`，可以通过配置文件或 `--mode` 切换。
+`memory_mb` 是**记录存储预算**，不是进程总内存上限；代理缓冲区和 Go 运行时另外占用内存。每条记录保守预留 8 KiB，默认最多保留 16,384 条。达到预算后停止新增记录，不淘汰已有历史；已有连接继续更新，代理和目标程序继续运行。
 
-## 诚实边界
+</details>
 
-- `preload` 对静态链接二进制无效（`LD_PRELOAD` 不被加载），此时连接**不会**出现在面板里。
-- `preload`/`ptrace` 不拦截 DNS：应用直连解析，面板看不到 DNS 查询。
-- UDP 在所有模式下都不覆盖。
-- `observe` 只能看到 TCP 连接的起止与远端，不知道成功/失败细节，没有流量字节数。
-- TLS 只解析 ClientHello 的 SNI/ALPN（回答"连了哪个域名"），绝不解密。
-- `tls_ms` 是被动测量的握手往返近似值（ClientHello 发出 → 服务端首字节到达）。
-- 单次运行、无持久历史：dashboard 展示当前 session，目标结束后保留至面板关闭。
+## 3. 模式对比
 
-## 防递归
+| 模式 | 工作方式 | 适用场景 | DNS 查询 | 权限与限制 |
+| --- | --- | --- | --- | --- |
+| `preload`（默认） | `LD_PRELOAD` 拦截连接，通过本地代理转发 | 动态链接的命令行程序 | 不记录 | 通常无需 root；静态链接程序不生效 |
+| `ptrace` | 改写目标进程的 `connect` 系统调用 | 静态链接 / Go 程序 | 不记录 | 仅 Linux x86_64，需系统允许 ptrace |
+| `netns` | 独立网络命名空间、TCP 重定向和 DNS 转发 | 同时查看 TCP 与 DNS | 记录查询与应答 | 需要 root、namespace 和 iptables 权限 |
+| `observe` | 轮询 `/proc` 中的 TCP 连接 | 无需转发的连接概览 | 不记录 | 不改写目标连接；可见性受 `/proc` 权限与轮询间隔影响 |
 
-- `preload`/`ptrace`：发往 127.0.0.1/`::1` 且端口为代理/dash 端口的连接会被拦截器放行。
-- `netns`：代理的出站 socket 打 `SO_MARK=0x1`，ns 内 iptables 优先放行 mark 0x1 的 TCP，
-  避免 REDIRECT 回环。
+<details>
+<summary>使用 netns 模式</summary>
 
-## 验证
+宿主机需要 `ip`（iproute2）、`iptables`、`sysctl`；通过 sudo 恢复目标用户身份时还需要 `setpriv`（util-linux）。
 
-```bash
+```sh
+sudo "$HOME/.local/bin/netinspect" --mode netns -- curl -I https://example.com
+sudo "$HOME/.local/bin/netinspect" --mode netns --user alice -- python app.py
+```
+
+通过 sudo 启动时，监控进程以 root 创建网络命名空间，目标命令默认恢复为 sudo 前的用户；`--user` 可指定用户名或 UID。直接以 root 启动且未指定用户时，目标命令仍以 root 运行。`--user` 仅适用于 `netns`。
+
+</details>
+
+<details>
+<summary>记录范围与可见性</summary>
+
+- TCP 连接详情取决于模式。`observe` 只记录连接起止与端点，不提供连接成功 / 失败判断或流量字节数，也可能漏掉短连接。
+- `preload` 对静态链接程序不生效，这类程序的连接不会出现在该模式的面板中。
+- TLS 信息来自可见的 ClientHello，仅提取 SNI / ALPN；TLS 耗时是握手往返的被动近似值。
+- DNS 记录依赖 `netns` 的 DNS 转发器；应用内加密 DNS 不会自动变成普通 DNS 查询记录。
+- 不提供通用 UDP 监控，也不解析 HTTP 请求正文、解密 HTTPS 或保存网络内容。
+
+</details>
+
+## 4. 开发与发布
+
+<details>
+<summary>本地验证</summary>
+
+```sh
+make -C modes/preload
 go test ./...
 go vet ./...
-go build -o /tmp/netinspect ./cmd/netinspect
+sh scripts/build.sh -o /tmp/netinspect
 python3 scripts/cli-smoke.py /tmp/netinspect
 ```
 
-CLI smoke 仅使用本机 loopback，覆盖参数透传、默认 Shell、延时关闭、多实例及停止隔离。
-netns 运行验证需要 root 和 namespace/iptables 权限。
+CLI smoke 仅使用本机 loopback，覆盖参数透传、命令退出码、面板保留、并发端口和实例停止隔离。涉及 `netns` 的运行验证需要额外的 root 和网络命名空间权限。
+
+</details>
+
+<details>
+<summary>发布 Release 与更新 Homebrew tap</summary>
+
+推送新的版本 tag 即可触发 [Release 工作流](.github/workflows/release.yml)：测试、构建 Linux amd64 binary、运行 CLI smoke、生成压缩包与 SHA256，然后发布 GitHub Release 和 Actions Artifacts。
+
+```sh
+git tag v0.1.2
+git push origin v0.1.2
+```
+
+正式版使用 `v1.2.3` 或 `1.2.3` 格式；带 `-` 的 tag（如 `v1.2.3-rc.1`）发布为 prerelease，不更新 Homebrew tap。版本来自 Git tag，`go.mod` 中的 `go` 字段声明最低 Go 工具链版本。
+
+Homebrew 更新使用 **netinspect 仓库** Actions Repository secrets 中的 `HOMEBREW_TAP_TOKEN`，需对 `ctxinf/homebrew-tap` 有 **Contents: Read and write** 权限，并允许直接推送默认分支。Release 使用工作流自带的 `GITHUB_TOKEN`。
+
+需要补发或重试时，在 Actions → Release → Run workflow 中填入现有 tag。发布专用脚本放在 `.github/workflows` 中，安装入口为根目录的 [install.sh](install.sh)。
+
+</details>
 
 ## 许可证
 
-MIT。拦截库为原创实现，未使用 graftcp/proxychains 代码。
+[MIT](LICENSE)。preload 与 ptrace 拦截实现为原创代码，未使用 graftcp / proxychains 代码。
