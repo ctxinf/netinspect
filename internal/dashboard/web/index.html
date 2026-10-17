@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -23,21 +23,22 @@
         >◉ <span>netinspect<span class="brand-dot">.</span></span></a
       >
       <div class="header-end">
+        <select id="language" aria-label="Language" data-i18n-aria-label="Language"></select>
         <span class="live"
-          ><i id="live-dot"></i><span id="live-text">连接中</span></span
+          ><i id="live-dot"></i><span id="live-text"><span data-i18n="Connecting">Connecting</span></span></span
         ><button
           id="theme"
           class="icon-btn"
-          aria-label="切换外观主题"
-          title="切换外观主题"
+          aria-label="Change theme" data-i18n-aria-label="Change theme"
+          title="Change theme" data-i18n-title="Change theme"
         ></button
         ><a
           class="icon-btn github-link"
           href="https://github.com/ctxinf/netinspect"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="GitHub 仓库"
-          title="GitHub 仓库"
+          aria-label="GitHub repository" data-i18n-aria-label="GitHub repository"
+          title="GitHub repository" data-i18n-title="GitHub repository"
           ><svg
             viewBox="0 0 24 24"
             width="19"
@@ -52,18 +53,18 @@
       </div>
     </header>
     <main>
-      <section class="session-line" aria-label="会话信息">
+      <section class="session-line" aria-label="Session information" data-i18n-aria-label="Session information">
         <strong id="status" class="session-status">—</strong>
 
         <span class="session-controls">
           <span class="session-item"
-            >会话: <strong id="session-id">—</strong></span
+            ><span data-i18n="Session:">Session:</span> <strong id="session-id">—</strong></span
           >
           <button
             class="icon-btn"
             id="pause"
-            title="仅暂停页面刷新，代理和记录继续运行"
-            aria-label="暂停页面刷新"
+            title="Pause page updates; proxy and capture continue" data-i18n-title="Pause page updates; proxy and capture continue"
+            aria-label="Pause updates" data-i18n-aria-label="Pause updates"
             aria-pressed="false"
           >
             Ⅱ
@@ -72,9 +73,9 @@
             id="stop-server"
             hidden
             class="icon-btn"
-            aria-label="关闭服务"
+            aria-label="Shut down" data-i18n-aria-label="Shut down"
             disabled
-            title="关闭 HTTP 服务并释放本次数据"
+            title="Stop HTTP service and release session data" data-i18n-title="Stop HTTP service and release session data"
           >
             <svg
               aria-hidden="true"
@@ -90,7 +91,7 @@
             </svg></button
         ></span>
         <span class="session-item command"
-          >命令 <strong id="command">—</strong></span
+          ><span data-i18n="Command">Command</span> <strong id="command">—</strong></span
         >
         <span class="mode-tag"
           ><svg
@@ -104,11 +105,11 @@
             <path
               d="m12 3 10 5-10 5L2 8 12 3Zm-10 9 10 5 10-5M2 16l10 5 10-5"
             /></svg
-          >Mode: <strong id="mode">—</strong></span
+          ><span data-i18n="Mode">Mode</span>: <strong id="mode">—</strong></span
         >
 
         <span class="session-item runtime"
-          >运行时间 <strong class="mono" id="uptime">00:00:00</strong
+          ><span data-i18n="Uptime">Uptime</span> <strong class="mono" id="uptime">00:00:00</strong
           ><small id="uptime-start" hidden></small
         ></span>
         <span class="session-item traffic"
@@ -136,32 +137,29 @@
         >
       </section>
       <div id="limit-notice" class="notice" hidden role="status"></div>
-      <section class="list-panel" aria-label="网络记录">
+      <section class="list-panel" aria-label="Network records" data-i18n-aria-label="Network records">
         <div class="toolbar">
-          <div class="tabs" role="group" aria-label="记录状态">
-            <button id="tab-all" class="selected" data-status="all">
-              全部 <span id="all-count">0</span>
+          <div class="tabs" role="group" aria-label="Record status" data-i18n-aria-label="Record status">
+            <button id="tab-all" class="selected" data-status="all"><span data-i18n="All">All</span><span id="all-count">0</span>
             </button>
-            <button id="tab-active" data-status="active">
-              活动 <span id="active-count">0</span></button
-            ><button id="tab-closed" data-status="closed">
-              已关闭 <span id="closed-count">0</span>
+            <button id="tab-active" data-status="active"><span data-i18n="Active">Active</span><span id="active-count">0</span></button
+            ><button id="tab-closed" data-status="closed"><span data-i18n="Closed">Closed</span><span id="closed-count">0</span>
             </button>
           </div>
           <div class="tools">
             <button
               class="icon-btn"
               id="direction"
-              title="切换排序方向"
-              aria-label="切换排序方向"
+              title="Reverse sort order" data-i18n-title="Reverse sort order"
+              aria-label="Reverse sort order" data-i18n-aria-label="Reverse sort order"
             >
               ↓↑
             </button>
             <details class="sort-menu" id="sort-menu">
               <summary
                 class="icon-btn"
-                title="选择排序列"
-                aria-label="选择排序列"
+                title="Choose sort column" data-i18n-title="Choose sort column"
+                aria-label="Choose sort column" data-i18n-aria-label="Choose sort column"
               >
                 <span id="sort-label" hidden></span
                 ><svg
@@ -182,7 +180,7 @@
                 class="menu"
                 id="sort-options"
                 role="group"
-                aria-label="排序列"
+                aria-label="Sort column" data-i18n-aria-label="Sort column"
               ></div>
             </details>
           </div>
@@ -191,23 +189,23 @@
             ><input
               id="filter"
               type="search"
-              placeholder="筛选目标、进程、IP、SNI、DNS 应答…"
-              aria-label="筛选记录"
+              placeholder="Filter target, process, IP, SNI, DNS answer…" data-i18n-placeholder="Filter target, process, IP, SNI, DNS answer…"
+              aria-label="Filter records" data-i18n-aria-label="Filter records"
               autocomplete="off"
             /><kbd>/</kbd></label
           >
           <button
             id="layout-toggle"
             class="icon-btn"
-            aria-label="切换宽屏"
-            title="切换宽屏"
+            aria-label="Use wide layout" data-i18n-aria-label="Use wide layout"
+            title="Use wide layout" data-i18n-title="Use wide layout"
             aria-pressed="false"
           ></button>
           <button
             class="icon-btn"
             id="settings"
-            title="列显示设置"
-            aria-label="列显示设置"
+            title="Column settings" data-i18n-title="Column settings"
+            aria-label="Column settings" data-i18n-aria-label="Column settings"
           >
             <svg
               aria-hidden="true"
@@ -228,9 +226,9 @@
         </div>
         <div class="list-info">
           <span
-            ><i class="small-dot"></i> <span id="view-status">实时更新</span
+            ><i class="small-dot"></i> <span id="view-status"><span data-i18n="Live updates">Live updates</span></span
             ><span class="separator">/</span
-            ><span id="count-note">加载中…</span></span
+            ><span id="count-note"><span data-i18n="Loading…">Loading…</span></span></span
           ><span id="refresh-error" role="status"></span>
         </div>
         <div class="table-scroll">
@@ -241,31 +239,31 @@
             <tbody id="table-body"></tbody>
           </table>
           <div class="empty" id="empty" hidden>
-            <span>⌕</span><strong>暂无记录</strong>
-            <p>新的网络活动会显示在这里</p>
+            <span>⌕</span><strong><span data-i18n="No records yet">No records yet</span></strong>
+            <p><span data-i18n="New network activity appears here">New network activity appears here</span></p>
           </div>
         </div>
         <footer class="pagination">
           <div>
-            <select id="page-size" aria-label="每页条数">
-              <option value="25">25 条 / 页</option>
-              <option value="50" selected>50 条 / 页</option>
-              <option value="100">100 条 / 页</option>
-              <option value="200">200 条 / 页</option></select
+            <select id="page-size" aria-label="Records per page" data-i18n-aria-label="Records per page">
+              <option value="25" data-i18n="25 / page">25 / page</option>
+              <option value="50" selected data-i18n="50 / page">50 / page</option>
+              <option value="100" data-i18n="100 / page">100 / page</option>
+              <option value="200" data-i18n="200 / page">200 / page</option></select
             ><span id="page-range">0–0 / 0</span>
           </div>
-          <nav aria-label="分页">
-            <button id="first-page" aria-label="第一页">«</button
-            ><button id="prev-page" aria-label="上一页">‹</button
+          <nav aria-label="Pagination" data-i18n-aria-label="Pagination">
+            <button id="first-page" aria-label="First page" data-i18n-aria-label="First page">«</button
+            ><button id="prev-page" aria-label="Previous page" data-i18n-aria-label="Previous page">‹</button
             ><span id="page-label">1 / 1</span
-            ><button id="next-page" aria-label="下一页">›</button
-            ><button id="last-page" aria-label="最后一页">»</button>
+            ><button id="next-page" aria-label="Next page" data-i18n-aria-label="Next page">›</button
+            ><button id="last-page" aria-label="Last page" data-i18n-aria-label="Last page">»</button>
           </nav>
         </footer>
       </section>
       <footer class="foot">
         <div class="memory">
-          <span>当前记录大小 <b id="memory-label">—</b></span>
+          <span><span data-i18n="Record storage">Record storage</span> <b id="memory-label">—</b></span>
           <div class="meter"><i id="memory-bar"></i></div>
         </div>
         <span
@@ -276,27 +274,29 @@
     </main>
     <dialog id="column-dialog">
       <header>
-        <div><span class="brand-dot">⚙</span> 列显示设置</div>
-        <button id="columns-close" class="icon-btn" aria-label="关闭列设置">
+        <div><span class="brand-dot">⚙</span><span data-i18n="Column settings">Column settings</span></div>
+        <button id="columns-close" class="icon-btn" aria-label="Close column settings" data-i18n-aria-label="Close column settings">
           ×
         </button>
       </header>
-      <p>选择需要显示的列，使用箭头调整顺序。</p>
+      <p><span data-i18n="Choose visible columns; use arrows to reorder.">Choose visible columns; use arrows to reorder.</span></p>
       <div id="column-options"></div>
       <footer>
-        <button id="reset-columns">恢复默认</button
-        ><button id="columns-done" class="primary">完成</button>
+        <button id="reset-columns"><span data-i18n="Reset defaults">Reset defaults</span></button
+        ><button id="columns-done" class="primary"><span data-i18n="Done">Done</span></button>
       </footer>
     </dialog>
     <dialog id="detail-dialog">
       <header>
-        <div id="detail-title">记录详情</div>
-        <button id="detail-close" class="icon-btn" aria-label="关闭详情">
+        <div id="detail-title"><span data-i18n="Record details">Record details</span></div>
+        <button id="detail-close" class="icon-btn" aria-label="Close details" data-i18n-aria-label="Close details">
           ×
         </button>
       </header>
       <dl id="detail-body"></dl>
     </dialog>
+    <script src="/translations.js"></script>
+    <script src="/i18n.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

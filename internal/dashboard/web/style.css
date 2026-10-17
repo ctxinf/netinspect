@@ -1368,3 +1368,13 @@ main > .foot {
 :root[data-theme="dark"] #tab-active span {
   color: #60a5fa;
 }
+
+#language {
+  max-width: 10rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px;
+}

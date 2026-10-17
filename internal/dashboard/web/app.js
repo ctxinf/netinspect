@@ -1,4 +1,6 @@
 "use strict";
+const { t } = window.netinspectI18n;
+const locale = () => window.netinspectI18n.locale;
 const $ = (id) => document.getElementById(id);
 const esc = (value) =>
   String(value ?? "").replace(
@@ -33,7 +35,7 @@ function duration(ms) {
 }
 const time = (ms) =>
   ms
-    ? new Date(ms).toLocaleString("zh-CN", {
+    ? new Date(ms).toLocaleString(locale(), {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -46,16 +48,15 @@ const time = (ms) =>
 function relativeTime(ms, now = Date.now()) {
   if (!ms) return "—";
   const seconds = Math.max(0, Math.floor((now - ms) / 1000));
-  if (seconds < 60) return seconds + " 秒前";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return minutes + " 分钟前";
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return hours + " 小时前";
-  return Math.floor(hours / 24) + " 天前";
+  const formatter = new Intl.RelativeTimeFormat(locale(), { numeric: "always" });
+  if (seconds < 60) return formatter.format(-seconds, "second");
+  if (seconds < 3600) return formatter.format(-Math.floor(seconds / 60), "minute");
+  if (seconds < 86400) return formatter.format(-Math.floor(seconds / 3600), "hour");
+  return formatter.format(-Math.floor(seconds / 86400), "day");
 }
 const systemTheme = matchMedia("(prefers-color-scheme: dark)");
 const themeModes = ["system", "light", "dark"];
-const themeNames = { system: "自动（跟随系统）", light: "亮色", dark: "暗色" };
+const themeNames = { system: "System", light: "Light", dark: "Dark" };
 const icon = (paths) =>
   '<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
   paths +
@@ -78,7 +79,7 @@ function applyTheme(theme) {
   button.innerHTML = themeIcons[theme];
   const next = themeModes[(themeModes.indexOf(theme) + 1) % themeModes.length];
   const label =
-    "当前：" + themeNames[theme] + "；点击切换为" + themeNames[next];
+    t("Current: {current}; click for {next}", { current: t(themeNames[theme]), next: t(themeNames[next]) });
   button.title = label;
   button.setAttribute("aria-label", label);
 }
@@ -109,18 +110,18 @@ const elapsed = (ms) => {
     .join(":");
 };
 const columns = [
-  ["time", "连接时间", true],
+  ["time", "Connection time", true],
   ["source", "Source", true],
-  ["dest", "Dest", true],
+  ["dest", "Destination", true],
   ["sni", "SNI", true],
   ["alpn", "ALPN", false],
-  ["process", "进程", true],
+  ["process", "Process", true],
   ["pid", "PID", false],
-  ["protocol", "协议 / 查询类型", true],
-  ["latency", "建连 / 查询耗时", true],
-  ["down", "下载量", true],
-  ["up", "上传量", true],
-  ["result", "结果", true],
+  ["protocol", "Protocol / query type", true],
+  ["latency", "Connect / query duration", true],
+  ["down", "Downloaded", true],
+  ["up", "Uploaded", true],
+  ["result", "Result", true],
 ].map(([key, label, visible]) => ({ key, label, visible }));
 const state = {
   status: "all",
@@ -132,6 +133,9 @@ const state = {
   paused: false,
   stopped: false,
   session: null,
+  snapshot: null,
+  connectionOK: false,
+  connectionMessage: "Connecting",
   data: { items: [], total: 0, active: 0, closed: 0, page: 1, size: 50 },
   columns: columns.map((c) => ({ ...c })),
   request: 0,
@@ -155,7 +159,7 @@ try {
     if (ordered.some((c) => c.visible)) state.columns = ordered;
   }
 } catch {}
-const columnLabel = (key) => columns.find((c) => c.key === key)?.label || key;
+const columnLabel = (key) => t(columns.find((c) => c.key === key)?.label || key);
 function value(i, key) {
   const c = i.conn,
     d = i.dns;
@@ -197,7 +201,7 @@ function cell(i, key) {
   if (key === "time")
     return (
       esc(
-        v ? new Date(v).toLocaleTimeString("zh-CN", { hour12: false }) : "—",
+        v ? new Date(v).toLocaleTimeString(locale(), { hour12: false }) : "—",
       ) +
       ' <span class="inline-meta ' +
       (i.conn && !i.conn.ended_at ? "active-age" : "") +
@@ -266,7 +270,7 @@ function renderTable() {
         '" class="' +
         (state.sort === c.key ? "sorted" : "") +
         '">' +
-        esc(c.label) +
+        esc(t(c.label)) +
         (state.sort === c.key
           ? state.direction === "desc"
             ? " ↓"
@@ -280,9 +284,9 @@ function renderTable() {
       (i, index) =>
         '<tr data-index="' +
         index +
-        '" tabindex="0" aria-label="查看 ' +
-        esc(value(i, "dest")) +
-        ' 详情">' +
+        '" tabindex="0" aria-label="' +
+        esc(t("View details for {target}", { target: value(i, "dest") })) +
+        '">' +
         visible
           .map(
             (c) =>
@@ -311,20 +315,20 @@ function renderTable() {
   const empty = state.data.items.length === 0;
   $("empty").hidden = !empty;
   $("empty").querySelector("strong").textContent = state.q
-    ? "没有匹配的记录"
+    ? t("No matching records")
     : state.status === "active"
-      ? "暂无活动连接"
+      ? t("No active connections")
       : state.status === "all"
-        ? "暂无记录"
-        : "暂无已关闭记录";
+        ? t("No records yet")
+        : t("No closed records");
   $("empty").querySelector("p").textContent = state.q
-    ? "试试其他筛选条件"
+    ? t("Try another filter")
     : state.status === "active"
-      ? "连接结束后可在「已关闭」中查看，DNS 也会显示在那里。"
+      ? t("Completed connections and DNS appear under Closed.")
       : state.status === "all"
-        ? "新的网络活动会显示在这里。"
-        : "已完成的连接和 DNS 查询会显示在这里。";
-  $("count-note").textContent = "共 " + state.data.total + " 条记录";
+        ? t("New network activity will appear here.")
+        : t("Completed connections and DNS queries appear here.");
+  $("count-note").textContent = t("{count} records", {count: state.data.total});
   $("all-count").textContent = state.data.active + state.data.closed;
   $("active-count").textContent = state.data.active;
   $("closed-count").textContent = state.data.closed;
@@ -342,6 +346,7 @@ function renderTable() {
     $(id).disabled = state.page >= pages;
 }
 function renderSession(data) {
+  state.snapshot = data;
   state.session = data.session;
   const s = data.session,
     st = data.stats,
@@ -353,16 +358,16 @@ function renderSession(data) {
   $("command").textContent = s.command || "—";
   $("command").title = s.command || "";
   const ended = !!s.ended_at;
-  $("status").textContent = ended ? "已结束" : "运行中";
+  $("status").textContent = ended ? t("Ended") : t("Running");
   $("status").dataset.status = ended ? "ended" : "running";
   $("uptime-start").hidden = !ended;
-  $("uptime-start").textContent = ended ? "开始于 " + time(s.started_at) : "";
+  $("uptime-start").textContent = ended ? t("Started at {time}", {time: time(s.started_at)}) : "";
   $("pause").hidden = ended || state.stopped;
   $("stop-server").hidden = !ended || state.stopped;
   $("stop-server").disabled = !ended || state.stopped;
   $("stop-server").title = ended
-    ? "关闭 HTTP 服务并释放本次数据"
-    : "被包裹的程序结束后可关闭 HTTP 服务";
+    ? t("Stop HTTP service and release session data")
+    : t("HTTP service can stop after the target exits");
   $("st-up").textContent = bytes(st.bytes_up);
   $("st-down").textContent = bytes(st.bytes_down);
   if (m) {
@@ -370,9 +375,7 @@ function renderSession(data) {
     $("memory-bar").style.width = Math.min(100, (m.used / m.limit) * 100) + "%";
     $("limit-notice").hidden = !m.limited;
     $("limit-notice").textContent =
-      "记录内存预算已达上限，已停止新增记录（跳过 " +
-      m.dropped +
-      " 条）。已有数据保留，已有连接继续更新；代理流量与目标程序继续运行。";
+      t("Record storage limit reached; {count} records skipped. Existing records keep updating; proxy traffic and target continue.", {count: m.dropped});
   }
   tick();
 }
@@ -392,8 +395,10 @@ function tick() {
     );
 }
 function connectionState(ok, message) {
+  state.connectionOK = ok;
+  state.connectionMessage = message;
   $("live-dot").classList.toggle("off", !ok);
-  $("live-text").textContent = message;
+  $("live-text").textContent = t(message);
 }
 function hasTableSelection() {
   const selection = window.getSelection();
@@ -429,7 +434,7 @@ async function refresh(force = false) {
       }),
       fetch("/api/session", { signal: controller.signal, cache: "no-store" }),
     ]);
-    if (responses.some((r) => !r.ok)) throw new Error("加载失败");
+    if (responses.some((r) => !r.ok)) throw new Error(t("Loading failed"));
     const [page, session] = await Promise.all(responses.map((r) => r.json()));
     if (
       request !== state.request ||
@@ -442,12 +447,12 @@ async function refresh(force = false) {
     state.page = page.page;
     renderSession(session);
     renderTable();
-    connectionState(true, "服务已连接");
+    connectionState(true, "Connected");
     $("refresh-error").textContent = "";
   } catch (e) {
     if (e.name !== "AbortError" && request === state.request) {
-      connectionState(false, "连接中断");
-      $("refresh-error").textContent = "刷新失败，正在重试；保留当前数据";
+      connectionState(false, "Disconnected");
+      $("refresh-error").textContent = t("Refresh failed; retrying with current data preserved");
     }
   } finally {
     if (request === state.request) state.refreshing = false;
@@ -460,7 +465,7 @@ function queryChanged() {
 function renderSort() {
   $("sort-label").textContent = columnLabel(state.sort);
   $("sort-menu").querySelector("summary").title =
-    "排序列：" + columnLabel(state.sort);
+    t("Sort column: {column}", {column: columnLabel(state.sort)});
   $("direction").innerHTML = icon(
     state.direction === "desc"
       ? '<path d="M7 4v16m-4-4 4 4 4-4M14 5h7m-7 5h5m-5 5h3"/>'
@@ -468,8 +473,8 @@ function renderSort() {
   );
   $("direction").title =
     state.direction === "desc"
-      ? "当前降序，点击切换升序"
-      : "当前升序，点击切换降序";
+      ? t("Descending; click for ascending")
+      : t("Ascending; click for descending");
   $("sort-options").innerHTML = columns
     .map(
       (c) =>
@@ -480,7 +485,7 @@ function renderSort() {
         '" aria-pressed="' +
         (state.sort === c.key) +
         '">' +
-        esc(c.label) +
+        esc(t(c.label)) +
         "<span>" +
         (state.sort === c.key ? "✓" : "") +
         "</span></button>",
@@ -511,25 +516,25 @@ function renderColumns() {
     .map(
       (c, i) =>
         '<div class="column-row"><span aria-hidden="true">⠿</span><label>' +
-        esc(c.label) +
+        esc(t(c.label)) +
         '<input type="checkbox" data-key="' +
         c.key +
         '" ' +
         (c.visible ? "checked" : "") +
-        ' aria-label="显示' +
-        esc(c.label) +
+        ' aria-label="' +
+        esc(t("Show {column}", {column: t(c.label)})) +
         '"></label><button data-move="-1" data-key="' +
         c.key +
         '" ' +
         (!i ? "disabled" : "") +
-        ' aria-label="上移' +
-        esc(c.label) +
+        ' aria-label="' +
+        esc(t("Move {column} up", {column: t(c.label)})) +
         '">↑</button><button data-move="1" data-key="' +
         c.key +
         '" ' +
         (i === state.columns.length - 1 ? "disabled" : "") +
-        ' aria-label="下移' +
-        esc(c.label) +
+        ' aria-label="' +
+        esc(t("Move {column} down", {column: t(c.label)})) +
         '">↓</button></div>',
     )
     .join("");
@@ -537,48 +542,52 @@ function renderColumns() {
 function showDetail(index) {
   const item = state.data.items[index];
   if (!item) return;
+  renderDetail(item);
+  $("detail-dialog").showModal();
+}
+function renderDetail(item) {
   state.detail = item;
   const c = item.conn,
     d = item.dns;
-  $("detail-title").textContent = d ? "DNS 查询详情" : "连接详情";
+  $("detail-title").textContent = d ? t("DNS query details") : t("Connection details");
   const fields = c
     ? [
         ["ID", c.id],
-        ["进程", c.comm],
+        [t("Process"), c.comm],
         ["PID", c.pid],
-        ["模式", c.mode],
-        ["主机", c.orig_host],
-        ["目标 IP", c.orig_ip],
-        ["目标端口", c.orig_port],
-        ["协议", c.proto],
+        [t("Mode"), c.mode],
+        [t("Host"), c.orig_host],
+        [t("Target IP"), c.orig_ip],
+        [t("Target port"), c.orig_port],
+        [t("Protocol"), c.proto],
         ["SNI", c.sni],
         ["ALPN", c.alpn],
         [
-          "出站方式",
+          t("Outbound route"),
           c.mode === "observe"
-            ? "仅观察（不接管流量）"
+            ? t("Observe only (no redirection)")
             : c.route === "DIRECT"
-              ? "直连"
+              ? t("Direct")
               : c.route,
         ],
-        ["开始", time(c.started_at)],
-        ["结束", c.ended_at ? time(c.ended_at) : "活动中"],
-        ["建连耗时", duration(c.connect_ms)],
-        ["TLS 耗时", duration(c.tls_ms)],
-        ["上传", bytes(c.bytes_up)],
-        ["下载", bytes(c.bytes_down)],
-        ["结果", c.result],
-        ["错误", c.error],
+        [t("Started"), time(c.started_at)],
+        [t("Ended at"), c.ended_at ? time(c.ended_at) : t("Active")],
+        [t("Connect duration"), duration(c.connect_ms)],
+        [t("TLS duration"), duration(c.tls_ms)],
+        [t("Upload"), bytes(c.bytes_up)],
+        [t("Download"), bytes(c.bytes_down)],
+        [t("Result"), c.result],
+        [t("Error"), c.error],
       ]
     : [
         ["ID", d.id],
-        ["进程", d.comm],
+        [t("Process"), d.comm],
         ["PID", d.pid],
-        ["查询名", d.qname],
-        ["查询类型", d.qtype],
-        ["应答", d.answer],
-        ["查询耗时", duration(d.ms)],
-        ["时间", time(d.at)],
+        [t("Query name"), d.qname],
+        [t("Query type"), d.qtype],
+        [t("Answer"), d.answer],
+        [t("Query duration"), duration(d.ms)],
+        [t("Time"), time(d.at)],
       ];
   $("detail-body").innerHTML = fields
     .map(
@@ -590,7 +599,6 @@ function showDetail(index) {
         "</dd></div>",
     )
     .join("");
-  $("detail-dialog").showModal();
 }
 async function stopServer() {
   const button = $("stop-server");
@@ -599,13 +607,13 @@ async function stopServer() {
     const control = await fetch("/api/control", {
       headers: { "X-Netinspect-Control": "1" },
     });
-    if (!control.ok) throw new Error("无法获取控制权限");
+    if (!control.ok) throw new Error(t("Cannot obtain control access"));
     const { token } = await control.json();
     const response = await fetch("/api/shutdown", {
       method: "POST",
       headers: { Authorization: "Bearer " + token },
     });
-    if (!response.ok) throw new Error("关闭失败，目标程序可能仍在运行");
+    if (!response.ok) throw new Error(t("Shutdown failed; target may still be running"));
     state.stopped = true;
     for (const id of [
       "pause",
@@ -623,9 +631,9 @@ async function stopServer() {
       $(id).disabled = true;
     $("sort-menu").hidden = true;
     state.controller?.abort();
-    connectionState(false, "服务已结束");
-    $("view-status").textContent = "服务已结束 · 数据快照";
-    button.textContent = "服务已结束";
+    connectionState(false, "Service stopped");
+    $("view-status").textContent = t("Service stopped · data snapshot");
+    button.textContent = t("Service stopped");
     button.hidden = true;
     $("refresh-error").textContent = "";
   } catch (e) {
@@ -634,6 +642,7 @@ async function stopServer() {
   }
 }
 function init() {
+  window.netinspectI18n.init();
   initTheme();
   let wide = false;
   try {
@@ -648,10 +657,26 @@ function init() {
         : '<path d="M9 4H4v5m11-5h5v5M9 20H4v-5m11 5h5v-5"/>',
     );
     button.setAttribute("aria-pressed", String(wide));
-    button.title = wide ? "恢复默认宽度" : "切换宽屏";
+    button.title = wide ? t("Restore default width") : t("Use wide layout");
     button.setAttribute("aria-label", button.title);
   };
   setLayout();
+  window.addEventListener("netinspect:language", () => {
+    applyTheme($("theme").dataset.mode);
+    setLayout();
+    renderSort();
+    renderTable();
+    renderColumns();
+    if (state.snapshot) renderSession(state.snapshot);
+    connectionState(state.connectionOK, state.connectionMessage);
+    $("view-status").textContent = state.stopped
+      ? t("Service stopped · data snapshot")
+      : state.paused ? t("Updates paused · proxy and capture continue") : t("Live updates");
+    $("pause").setAttribute("aria-label", state.paused ? t("Resume updates") : t("Pause updates"));
+    if (state.detail && $("detail-dialog").open) {
+      renderDetail(state.detail);
+    }
+  });
   $("layout-toggle").onclick = () => {
     wide = !wide;
     setLayout();
@@ -698,11 +723,11 @@ function init() {
     $("pause").textContent = state.paused ? "▷" : "Ⅱ";
     $("pause").setAttribute(
       "aria-label",
-      state.paused ? "恢复页面刷新" : "暂停页面刷新",
+      state.paused ? t("Resume updates") : t("Pause updates"),
     );
     $("view-status").textContent = state.paused
-      ? "页面已暂停 · 代理和记录继续运行"
-      : "实时更新";
+      ? t("Updates paused · proxy and capture continue")
+      : t("Live updates");
     for (const id of [
       "filter",
       "direction",
