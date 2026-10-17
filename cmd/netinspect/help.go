@@ -1,0 +1,68 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"golang.org/x/sys/unix"
+)
+
+const usage = `Monitor a Linux process and its network connections.
+
+Usage:
+  netinspect <COMMAND> [ARGS...]
+  netinspect [OPTIONS] -- <COMMAND> [ARGS...]
+  netinspect run [OPTIONS] -- <COMMAND> [ARGS...]
+  netinspect stop --url <URL> --token <TOKEN>
+
+Commands:
+  run                 Run and monitor a command (default)
+  stop                Shut down a running dashboard
+  version             Print version information
+  help                Print this help
+
+Options:
+      --mode <MODE>       Capture mode: preload, ptrace, netns, observe [default: preload]
+      --user <USER>       Target username or UID for netns [default: original sudo user]
+      --listen <ADDRESS>  Dashboard address [default: 127.0.0.1:17890]
+      --port <PORT>       Override the dashboard port; busy ports increment automatically
+      --keep-alive <TIME> Keep dashboard after target exits; 0 disables [default: 30m]
+      --open-browser     Open dashboard automatically [default: true; use =false to disable]
+      --memory-mb <MB>    Record storage budget in MiB [default: 128]
+      --config <FILE>     Load only this JSON configuration file
+      --version          Print version information
+  -h, --help             Print help
+
+Examples:
+  netinspect curl -I https://example.com
+  netinspect --mode observe --keep-alive 10m -- python app.py
+  netinspect run -- ./my-command --help
+
+Configuration:
+  User config, then .netinspect.json in the working directory, then CLI options.
+  --config replaces automatic file discovery. Target arguments are passed unchanged.
+  With run or options, separate the target command using --.
+
+Shell alias:
+  alias ni=netinspect
+  Add this line to ~/.bashrc or ~/.zshrc, then use: ni curl -I https://example.com
+
+Capture notes:
+  Connection metadata only; traffic is not decrypted. Records live until shutdown.
+  Each record reserves 8 KiB. The default budget holds at most 16384 records.
+  At capacity, existing records still update and traffic continues; new records stop.
+  Proxy buffers and the Go runtime use additional memory.
+`
+
+func printHelp() {
+	text := usage
+	_, noColor := os.LookupEnv("NO_COLOR")
+	_, terminalErr := unix.IoctlGetTermios(int(os.Stdout.Fd()), unix.TCGETS)
+	if !noColor && os.Getenv("TERM") != "dumb" && terminalErr == nil {
+		for _, heading := range []string{"Usage:", "Commands:", "Options:", "Examples:", "Configuration:", "Shell alias:", "Capture notes:"} {
+			text = strings.ReplaceAll(text, heading, "\x1b[1;32m"+heading+"\x1b[0m")
+		}
+	}
+	fmt.Print(text)
+}

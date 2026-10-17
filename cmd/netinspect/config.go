@@ -51,7 +51,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		}
 		requireSeparator = true
 		if a == "--help" || a == "-h" {
-			fmt.Print(usage)
+			printHelp()
 			return cfg, flag.ErrHelp
 		}
 		key, value, equal := strings.Cut(a, "=")
@@ -145,7 +145,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	}
 	fs := flag.NewFlagSet("netinspect", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.Usage = func() { fmt.Print(usage) }
+	fs.Usage = func() { printHelp() }
 	fs.StringVar(&cfg.TargetUser, "user", cfg.TargetUser, "")
 	fs.BoolVar(&cfg.OpenBrowser, "open-browser", cfg.OpenBrowser, "")
 	fs.StringVar(&cfg.Mode, "mode", cfg.Mode, "")
@@ -193,7 +193,7 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	}
 	cfg.Command = fs.Args()
 	if len(cfg.Command) == 0 {
-		fmt.Print(usage)
+		printHelp()
 		return cfg, flag.ErrHelp
 	}
 	cfg.ExePath, err = os.Executable()
