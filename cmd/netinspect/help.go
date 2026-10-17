@@ -129,7 +129,8 @@ func initConfigCmd(args []string) error {
   "listen": "127.0.0.1:17890",
   "keep_alive": "30m",
   "open_browser": true,
-  "memory_mb": 128
+  "memory_mb": 128,
+  "upstream_proxy": ""
 }
 `)
 	closeErr := f.Close()

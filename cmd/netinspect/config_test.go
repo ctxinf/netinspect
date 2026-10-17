@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"os"
@@ -181,6 +182,13 @@ func TestInitConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var generated fileConfig
+	if err := json.Unmarshal(before, &generated); err != nil {
+		t.Fatal(err)
+	}
+	if generated.UpstreamProxy == nil || *generated.UpstreamProxy != "" {
+		t.Fatal("default config must include an empty upstream_proxy for direct connections")
+	}
 	if err := initConfigCmd(nil); err == nil {
 		t.Fatal("overwrote existing config")
 	}
@@ -189,7 +197,7 @@ func TestInitConfig(t *testing.T) {
 		t.Fatal("config changed")
 	}
 	cfg, err := parseRun([]string{"true"}, "preload")
-	if err != nil || cfg.Mode != "preload" || cfg.MemoryMB != 128 {
+	if err != nil || cfg.Mode != "preload" || cfg.MemoryMB != 128 || cfg.UpstreamProxy != "" {
 		t.Fatalf("%+v %v", cfg, err)
 	}
 	if configStatus(path) != "exists" || configStatus(path+".missing") != "missing" {
