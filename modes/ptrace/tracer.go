@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"netinspect/internal/cliui"
 	"netinspect/internal/sidechan"
 )
 
@@ -61,7 +62,7 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 	}
 	pid, err := syscall.ForkExec(cmd, argv, attr)
 	if err != nil {
-		return fmt.Errorf("forkexec: %w", err)
+		return fmt.Errorf("ptrace 启动目标失败：%w；如被系统拒绝，请检查已有跟踪器、seccomp/Yama 或沙箱限制，可尝试 netns/observe", err)
 	}
 
 	signals := make(chan os.Signal, 1)
@@ -82,6 +83,8 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 		}
 	}()
 	var exitErr error
+	warnedNested := false
+	warnedCapture := false
 	options := unix.PTRACE_O_TRACESYSGOOD |
 		unix.PTRACE_O_TRACEFORK |
 		unix.PTRACE_O_TRACECLONE |
@@ -131,7 +134,7 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 					handleExit(wpid, st, sockPath)
 				} else {
 					st.inSyscall = true
-					handleEnter(wpid, st, proxyPort, dashPort)
+					handleEnter(wpid, st, proxyPort, dashPort, &warnedNested, &warnedCapture)
 				}
 				_ = unix.PtraceSyscall(wpid, 0)
 			case sig == unix.SIGTRAP:
@@ -170,11 +173,16 @@ func (e *ExitError) ExitCode() int { return e.Code }
 
 // handleEnter inspects a connect() syscall entry and rewrites the destination
 // to the proxy when appropriate.
-func handleEnter(pid int, st *tracee, proxyPort, dashPort int) {
+func handleEnter(pid int, st *tracee, proxyPort, dashPort int, warnedNested, warnedCapture *bool) {
 	var regs unix.PtraceRegs
 	if err := unix.PtraceGetRegs(pid, &regs); err != nil {
 		debugf("enter pid=%d: getregs: %v", pid, err)
 		return
+	}
+	if regs.Orig_rax == unix.SYS_PTRACE && !*warnedNested &&
+		(regs.Rdi == unix.PTRACE_TRACEME || regs.Rdi == unix.PTRACE_ATTACH || regs.Rdi == unix.PTRACE_SEIZE) {
+		*warnedNested = true
+		cliui.Printf("! WARN: PID %d 尝试嵌套 ptrace 跟踪（可能来自 graftcp/strace/调试器），会与当前 ptrace 模式冲突；建议使用 netns 或 observe。\n", pid)
 	}
 	if regs.Orig_rax != sysConnect {
 		return
@@ -205,7 +213,12 @@ func handleEnter(pid int, st *tracee, proxyPort, dashPort int) {
 		return // unix sockets etc.
 	}
 	// only TCP sockets: check SO_TYPE via pidfd_getfd
-	if !sockIsTCP(pid, fd) {
+	isTCP, inspectErr := sockIsTCP(pid, fd)
+	if inspectErr != nil && !*warnedCapture {
+		*warnedCapture = true
+		cliui.Printf("! WARN [ptrace]: 无法检查目标套接字：%v；对应连接将跳过，可能受内核版本、seccomp、Yama 或权限限制。可尝试 netns 或 observe。\n", inspectErr)
+	}
+	if !isTCP {
 		debugf("enter pid=%d fd=%d: not a TCP socket, skip", pid, fd)
 		return
 	}
@@ -230,6 +243,10 @@ func handleEnter(pid int, st *tracee, proxyPort, dashPort int) {
 	newSA[2] = byte(proxyPort >> 8)
 	newSA[3] = byte(proxyPort)
 	if err := writeRemote(pid, uintptr(regs.Rsi), newSA); err != nil {
+		if !*warnedCapture {
+			*warnedCapture = true
+			cliui.Printf("! WARN [ptrace]: 无法改写目标 connect 地址：%v；该连接无法重定向采集。\n", err)
+		}
 		return
 	}
 	st.pending = pendingConnect{fd: fd, ip: ip.String(), port: port}
@@ -268,19 +285,22 @@ func handleExit(pid int, st *tracee, sockPath string) {
 // pidfd_getfd to duplicate the tracee's fd into our process and query
 // SO_TYPE. (An unconnected socket does not appear in /proc/net/tcp, so the
 // inode-table lookup only works after connect.)
-func sockIsTCP(pid, fd int) bool {
+func sockIsTCP(pid, fd int) (bool, error) {
 	pidfd, err := unix.PidfdOpen(pid, 0)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("pidfd_open: %w", err)
 	}
 	defer unix.Close(pidfd)
 	ourFd, err := unix.PidfdGetfd(pidfd, fd, 0)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("pidfd_getfd: %w", err)
 	}
 	defer unix.Close(ourFd)
 	typ, err := unix.GetsockoptInt(ourFd, unix.SOL_SOCKET, unix.SO_TYPE)
-	return err == nil && typ == unix.SOCK_STREAM
+	if err != nil {
+		return false, fmt.Errorf("getsockopt(SO_TYPE): %w", err)
+	}
+	return typ == unix.SOCK_STREAM, nil
 }
 
 // localPortOf finds the local TCP port of the socket behind /proc/pid/fd/fd.

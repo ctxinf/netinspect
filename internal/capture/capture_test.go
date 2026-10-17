@@ -37,7 +37,7 @@ func TestClassifyTLS(t *testing.T) {
 	}).Handshake()
 	select {
 	case info := <-got:
-		if info.Proto != "tls" {
+		if info.Proto != "TLS" {
 			t.Fatalf("proto=%q want tls", info.Proto)
 		}
 		if info.SNI != "example.com" {
@@ -53,14 +53,21 @@ func TestClassifyTLS(t *testing.T) {
 
 func TestClassifyHTTP(t *testing.T) {
 	info, _, _ := Classify(bytes.NewReader([]byte("POST /api/x HTTP/1.1\r\nHost: a.com\r\nContent-Length: 3\r\n\r\nabc")))
-	if info.Proto != "http" {
+	if info.Proto != "HTTP" {
 		t.Fatalf("proto=%q want http", info.Proto)
 	}
 }
 
 func TestClassifyOpaque(t *testing.T) {
 	info, _, _ := Classify(bytes.NewReader([]byte{0x01, 0x02, 0x03}))
-	if info.Proto != "tcp" {
+	if info.Proto != "TCP" {
 		t.Fatalf("proto=%q want tcp", info.Proto)
+	}
+}
+
+func TestClassifySSHBanner(t *testing.T) {
+	info, _, _ := Classify(bytes.NewReader([]byte("SSH-2.0-OpenSSH_9.9\r\n")))
+	if info.Proto != "SSH" {
+		t.Fatalf("proto=%q want SSH", info.Proto)
 	}
 }

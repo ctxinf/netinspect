@@ -64,7 +64,7 @@ func New(cfg Config) *Server {
 }
 
 func (s *Server) emitConn(typ string, c *store.Conn) {
-	if s.cfg.Emit != nil {
+	if s.cfg.Emit != nil && c != nil && c.ID != 0 {
 		cp := *c
 		s.cfg.Emit(Event{Type: typ, Conn: &cp})
 	}
@@ -243,7 +243,11 @@ func (s *Server) recordFailed(c net.Conn, origHost, origIP string, origPort int,
 		OrigHost: origHost, OrigIP: origIP, OrigPort: origPort,
 		Route: "DIRECT", Result: result, Error: errText,
 	}
+	if caddr := c.RemoteAddr(); caddr != nil {
+		rec.Source = caddr.String()
+	}
 	s.cfg.Store.AddConnection(rec)
+	s.cfg.Store.FinishConnection(rec.ID, 0, 0, result, errText)
 	s.emitConn("conn_new", rec)
 	s.emitConn("conn_closed", rec)
 	return rec
@@ -312,6 +316,9 @@ func (s *Server) establish(client net.Conn, origHost, dialIP string, origPort in
 		OrigHost: origHost, OrigIP: dialIP, OrigPort: origPort,
 		Route: "DIRECT", Result: "open",
 	}
+	if addr := client.RemoteAddr(); addr != nil {
+		rec.Source = addr.String()
+	}
 	s.cfg.Store.AddConnection(rec)
 	s.emitConn("conn_new", rec)
 
@@ -331,6 +338,7 @@ func (s *Server) establish(client net.Conn, origHost, dialIP string, origPort in
 		server, err = d.Dial("tcp", net.JoinHostPort(dialIP, strconv.Itoa(origPort)))
 	}
 	rec.ConnectMs = time.Since(t0).Seconds() * 1000
+	s.cfg.Store.SetConnectMs(rec.ID, rec.ConnectMs)
 	if err != nil {
 		result := "error"
 		msg := err.Error()
@@ -372,7 +380,7 @@ func (s *Server) relayAndFinish(client, server net.Conn, rec *store.Conn) {
 	client.Close()
 	server.Close()
 
-	if rec.Proto == "tls" && !firstDown.IsZero() {
+	if rec.Proto == "TLS" && !firstDown.IsZero() {
 		rec.TLSMs = firstDown.Sub(helloAt).Seconds() * 1000
 		s.cfg.Store.SetTLSMs(rec.ID, rec.TLSMs)
 	}
@@ -476,7 +484,7 @@ func originalDst(c net.Conn) (net.IP, int, error) {
 		var buf [28]byte
 		n := uint32(len(buf))
 		_, _, errno := unix.Syscall6(unix.SYS_GETSOCKOPT,
-			fd, unix.SOL_IP, 80 /* SO_ORIGINAL_DST */,
+			fd, unix.SOL_IP, 80, /* SO_ORIGINAL_DST */
 			uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&n)), 0)
 		if errno != 0 {
 			gerr = errno

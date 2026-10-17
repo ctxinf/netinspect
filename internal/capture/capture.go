@@ -12,7 +12,7 @@ import (
 
 // Info is the connection-level classification of a stream.
 type Info struct {
-	Proto string   // "tls", "http", or "tcp"
+	Proto string   // "TLS", "HTTP", "SSH", or "TCP"
 	SNI   string   // from TLS ClientHello, if present
 	ALPN  []string // from TLS ClientHello, if present
 }
@@ -26,22 +26,25 @@ func Classify(r io.Reader) (Info, *PrefixConn, error) {
 	br := bufio.NewReader(r)
 	if _, err := br.Peek(1); err != nil {
 		// client sent nothing (server-first protocol or idle): opaque
-		return Info{Proto: "tcp"}, &PrefixConn{R: br}, nil
+		return Info{Proto: "TCP"}, &PrefixConn{R: br}, nil
 	}
 	time.Sleep(30 * time.Millisecond) // let the first flight arrive
 	peek, _ := br.Peek(br.Buffered())
 	pc := &PrefixConn{R: br}
 	if len(peek) >= 2 && peek[0] == 0x16 && peek[1] == 0x03 {
-		info := Info{Proto: "tls"}
+		info := Info{Proto: "TLS"}
 		if sni, alpn := parseClientHello(peek); sni != "" || len(alpn) > 0 {
 			info.SNI, info.ALPN = sni, alpn
 		}
 		return info, pc, nil
 	}
-	if isHTTPRequestLine(peek) {
-		return Info{Proto: "http"}, pc, nil
+	if bytes.HasPrefix(peek, []byte("SSH-")) {
+		return Info{Proto: "SSH"}, pc, nil
 	}
-	return Info{Proto: "tcp"}, pc, nil
+	if isHTTPRequestLine(peek) {
+		return Info{Proto: "HTTP"}, pc, nil
+	}
+	return Info{Proto: "TCP"}, pc, nil
 }
 
 // PrefixConn replays nothing itself; it just marks that the underlying

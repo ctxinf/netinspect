@@ -1,160 +1,302 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>netinspect</title>
-<style>
-  :root{
-    --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --border:#30363d;
-    --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff;
-    --green:#3fb950; --red:#f85149; --blue:#58a6ff; --amber:#d29922;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);
-       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif}
-  .mono,code,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace}
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>netinspect · Network inspector</title>
+    <script>
+      try {
+        const theme = localStorage.getItem("netinspect.theme") || "system";
+        document.documentElement.dataset.theme =
+          theme === "system"
+            ? matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light"
+            : theme;
+      } catch {}
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/"
+        >◉ <span>netinspect<span class="brand-dot">.</span></span></a
+      >
+      <div class="header-end">
+        <span class="live"
+          ><i id="live-dot"></i><span id="live-text">连接中</span></span
+        ><button
+          id="theme"
+          class="icon-btn"
+          aria-label="切换外观主题"
+          title="切换外观主题"
+        ></button
+        ><a
+          class="icon-btn github-link"
+          href="https://github.com/ctxinf/netinspect"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="GitHub 仓库"
+          title="GitHub 仓库"
+          ><svg
+            viewBox="0 0 24 24"
+            width="19"
+            height="19"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03A9.6 9.6 0 0 1 12 6.82c.85 0 1.71.11 2.51.34 1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"
+            /></svg
+        ></a>
+      </div>
+    </header>
+    <main>
+      <section class="session-line" aria-label="会话信息">
+        <strong id="status" class="session-status">—</strong>
 
-  /* ---- top bar ---- */
-  .topbar{display:flex;align-items:center;gap:16px;padding:10px 16px;
-          background:var(--panel);border-bottom:1px solid var(--border);
-          position:sticky;top:0;z-index:50}
-  .brand{font-weight:700;font-size:17px;letter-spacing:.3px}
-  .brand::before{content:"◉";color:var(--green);margin-right:8px;font-size:13px}
-  .sess{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;min-width:0}
-  .cmd{color:var(--text);background:var(--panel2);border:1px solid var(--border);
-       border-radius:6px;padding:2px 8px;max-width:420px;overflow:hidden;
-       text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
-  .badge{font-size:12px;padding:2px 8px;border-radius:20px;border:1px solid var(--border);
-         background:var(--panel2);color:var(--text)}
-  .status{font-size:12.5px}
-  .status.running{color:var(--green)}
-  .status.ended{color:var(--red)}
-  .ws-dot{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
-  .ws-dot i{width:9px;height:9px;border-radius:50%;background:var(--red);display:inline-block}
-  .ws-dot.on i{background:var(--green)}
+        <span class="session-controls">
+          <span class="session-item"
+            >会话: <strong id="session-id">—</strong></span
+          >
+          <button
+            class="icon-btn"
+            id="pause"
+            title="仅暂停页面刷新，代理和记录继续运行"
+            aria-label="暂停页面刷新"
+            aria-pressed="false"
+          >
+            Ⅱ
+          </button>
+          <button
+            id="stop-server"
+            hidden
+            class="icon-btn"
+            aria-label="关闭服务"
+            disabled
+            title="关闭 HTTP 服务并释放本次数据"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="17"
+              height="17"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M12 2v10m-6.4-7a9 9 0 1 0 12.8 0" />
+            </svg></button
+        ></span>
+        <span class="session-item command"
+          >命令 <strong id="command">—</strong></span
+        >
+        <span class="mode-tag"
+          ><svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path
+              d="m12 3 10 5-10 5L2 8 12 3Zm-10 9 10 5 10-5M2 16l10 5 10-5"
+            /></svg
+          >Mode: <strong id="mode">—</strong></span
+        >
 
-  /* ---- stat cards ---- */
-  main{padding:16px;max-width:1280px;margin:0 auto}
-  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
-  .card .k{color:var(--muted);font-size:12px;margin-bottom:4px}
-  .card .v{font-size:22px;font-weight:600}
-  .card .v.fail{color:var(--red)} .card .v.ok{color:var(--green)}
-
-  /* ---- tabs ---- */
-  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:0}
-  .tabs button{background:none;border:none;color:var(--muted);font-size:14px;
-               padding:8px 14px;cursor:pointer;border-bottom:2px solid transparent}
-  .tabs button.active{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
-  .tabs button:hover{color:var(--text)}
-  .toolbar{display:flex;align-items:center;gap:12px;padding:12px 0}
-  .toolbar input{flex:0 1 340px;background:var(--panel);border:1px solid var(--border);
-                 border-radius:6px;color:var(--text);padding:7px 10px;font-size:13px}
-  .toolbar input:focus{outline:none;border-color:var(--accent)}
-  .count-note{color:var(--muted);font-size:12.5px}
-
-  /* ---- tables ---- */
-  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);
-        border:1px solid var(--border);border-radius:8px;overflow:hidden}
-  thead th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;
-           padding:9px 12px;border-bottom:1px solid var(--border);background:var(--panel2);
-           white-space:nowrap}
-  tbody td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
-  tbody tr:last-child td{border-bottom:none}
-  tbody tr.row{cursor:pointer}
-  tbody tr.row:hover{background:#1f2630}
-  tbody tr.row.selected{background:#1c2b3f}
-  .dim{color:var(--muted)} .small{font-size:12px}
-  .sni{color:var(--muted);font-size:11.5px;margin-top:2px}
-  .num{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;white-space:nowrap}
-  .rbadge{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:20px;font-weight:600}
-  .rbadge.ok{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.4)}
-  .rbadge.open{background:rgba(88,166,255,.15);color:var(--blue);border:1px solid rgba(88,166,255,.4);
-               animation:blink 1.2s ease-in-out infinite}
-  .rbadge.fail{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.4)}
-  .rbadge.pending{background:rgba(139,148,158,.12);color:var(--muted);border:1px solid var(--border)}
-  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
-  .proto{color:var(--amber)}
-  .tlsms{color:var(--muted);font-size:11.5px;margin-left:6px}
-  .empty{padding:28px;text-align:center;color:var(--muted)}
-
-  /* ---- detail drawer ---- */
-  .detail{position:fixed;top:0;right:0;width:400px;max-width:92vw;height:100vh;
-          background:var(--panel);border-left:1px solid var(--border);z-index:100;
-          transform:translateX(105%);transition:transform .22s ease;
-          display:flex;flex-direction:column}
-  .detail.open{transform:none}
-  .detail header{display:flex;align-items:center;justify-content:space-between;
-                 padding:12px 16px;border-bottom:1px solid var(--border)}
-  .detail header h3{margin:0;font-size:15px}
-  .detail header button{background:none;border:1px solid var(--border);color:var(--muted);
-                        border-radius:6px;cursor:pointer;padding:3px 10px;font-size:14px}
-  .detail header button:hover{color:var(--text);border-color:var(--muted)}
-  .detail .body{padding:6px 16px 20px;overflow-y:auto}
-  .drow{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
-  .drow:last-child{border-bottom:none}
-  .drow .dk{flex:0 0 88px;color:var(--muted)}
-  .drow .dv{flex:1;min-width:0;overflow-wrap:anywhere}
-  .drow pre{margin:0;white-space:pre-wrap;background:var(--bg);
-             border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px}
-  .foot{margin-top:14px;color:var(--muted);font-size:11.5px;text-align:center}
-</style>
-</head>
-<body>
-<header class="topbar">
-  <div class="brand">netinspect</div>
-  <div class="sess">
-    <span class="mono" id="session-id" title="session id">—</span>
-    <span class="badge" id="mode-badge">—</span>
-    <code class="cmd" id="command" title="">—</code>
-    <span class="status" id="status">…</span>
-  </div>
-  <button id="stop-server" disabled style="background:var(--panel2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:6px 12px;cursor:pointer" title="目标程序结束后可关闭面板">结束 Server</button>
-  <div class="ws-dot" id="ws-dot"><i></i><span id="ws-text">ws 断开</span></div>
-</header>
-
-<main>
-  <section class="cards">
-    <div class="card"><div class="k">连接数</div><div class="v mono" id="st-conns">0</div></div>
-    <div class="card"><div class="k">失败</div><div class="v mono fail" id="st-failed">0</div></div>
-    <div class="card"><div class="k">上行</div><div class="v mono" id="st-up">0 B</div></div>
-    <div class="card"><div class="k">下行</div><div class="v mono" id="st-down">0 B</div></div>
-    <div class="card"><div class="k">DNS 查询</div><div class="v mono" id="st-dns">0</div></div>
-  </section>
-
-  <nav class="tabs">
-    <button data-tab="conns" class="active">Connections</button>
-    <button data-tab="dns">DNS</button>
-  </nav>
-
-  <div class="toolbar" id="toolbar-conns">
-    <input id="filter" type="search" placeholder="按目标 / 进程 / SNI 过滤…" autocomplete="off">
-    <span class="count-note" id="count-note"></span>
-  </div>
-
-  <table id="conns-table">
-    <thead><tr>
-      <th>目标</th><th>进程</th><th>模式</th><th>协议</th><th>建连耗时</th><th>流量</th><th>结果</th>
-    </tr></thead>
-    <tbody id="conns-body"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
-  </table>
-
-  <table id="dns-table" hidden>
-    <thead><tr>
-      <th>时间</th><th>进程</th><th>查询名</th><th>类型</th><th>应答</th><th>耗时</th>
-    </tr></thead>
-    <tbody id="dns-body"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody>
-  </table>
-
-  <p class="foot">仅展示连接级元数据，不捕获、不展示任何传输内容。</p>
-</main>
-
-<aside class="detail" id="detail" aria-hidden="true">
-  <header><h3>连接详情</h3><button id="detail-close" title="关闭 (Esc)">✕</button></header>
-  <div class="body" id="detail-body"></div>
-</aside>
-
-<script src="app.js"></script>
-</body>
+        <span class="session-item runtime"
+          >运行时间 <strong class="mono" id="uptime">00:00:00</strong
+          ><small id="uptime-start" hidden></small
+        ></span>
+        <span class="session-item traffic"
+          ><svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" /></svg
+          ><strong id="st-down">0 B</strong></span
+        ><span class="session-item traffic"
+          ><svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5" /></svg
+          ><strong id="st-up">0 B</strong></span
+        >
+      </section>
+      <div id="limit-notice" class="notice" hidden role="status"></div>
+      <section class="list-panel" aria-label="网络记录">
+        <div class="toolbar">
+          <div class="tabs" role="group" aria-label="记录状态">
+            <button id="tab-all" class="selected" data-status="all">
+              全部 <span id="all-count">0</span>
+            </button>
+            <button id="tab-active" data-status="active">
+              活动 <span id="active-count">0</span></button
+            ><button id="tab-closed" data-status="closed">
+              已关闭 <span id="closed-count">0</span>
+            </button>
+          </div>
+          <div class="tools">
+            <button
+              class="icon-btn"
+              id="direction"
+              title="切换排序方向"
+              aria-label="切换排序方向"
+            >
+              ↓↑
+            </button>
+            <details class="sort-menu" id="sort-menu">
+              <summary
+                class="icon-btn"
+                title="选择排序列"
+                aria-label="选择排序列"
+              >
+                <span id="sort-label" hidden></span
+                ><svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M3 9l4 -4l4 4m-4 -4v14" />
+                  <path d="M21 15l-4 4l-4 -4m4 4v-14" />
+                </svg>
+              </summary>
+              <div
+                class="menu"
+                id="sort-options"
+                role="group"
+                aria-label="排序列"
+              ></div>
+            </details>
+          </div>
+          <label class="search"
+            ><span aria-hidden="true">⌕</span
+            ><input
+              id="filter"
+              type="search"
+              placeholder="筛选目标、进程、IP、SNI、DNS 应答…"
+              aria-label="筛选记录"
+              autocomplete="off"
+            /><kbd>/</kbd></label
+          >
+          <button
+            id="layout-toggle"
+            class="icon-btn"
+            aria-label="切换宽屏"
+            title="切换宽屏"
+            aria-pressed="false"
+          ></button>
+          <button
+            class="icon-btn"
+            id="settings"
+            title="列显示设置"
+            aria-label="列显示设置"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="25"
+              height="25"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linejoin="round"
+            >
+              <polygon
+                points="21.95,11.02 21.95,12.98 19.66,14.32 19.06,15.77 19.73,18.34 18.34,19.73 15.77,19.06 14.32,19.66 12.98,21.95 11.02,21.95 9.68,19.66 8.23,19.06 5.66,19.73 4.27,18.34 4.94,15.77 4.34,14.32 2.05,12.98 2.05,11.02 4.34,9.68 4.94,8.23 4.27,5.66 5.66,4.27 8.23,4.94 9.68,4.34 11.02,2.05 12.98,2.05 14.32,4.34 15.77,4.94 18.34,4.27 19.73,5.66 19.06,8.23 19.66,9.68"
+              />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </div>
+        <div class="list-info">
+          <span
+            ><i class="small-dot"></i> <span id="view-status">实时更新</span
+            ><span class="separator">/</span
+            ><span id="count-note">加载中…</span></span
+          ><span id="refresh-error" role="status"></span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr id="table-head"></tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+          </table>
+          <div class="empty" id="empty" hidden>
+            <span>⌕</span><strong>暂无记录</strong>
+            <p>新的网络活动会显示在这里</p>
+          </div>
+        </div>
+        <footer class="pagination">
+          <div>
+            <select id="page-size" aria-label="每页条数">
+              <option value="25">25 条 / 页</option>
+              <option value="50" selected>50 条 / 页</option>
+              <option value="100">100 条 / 页</option>
+              <option value="200">200 条 / 页</option></select
+            ><span id="page-range">0–0 / 0</span>
+          </div>
+          <nav aria-label="分页">
+            <button id="first-page" aria-label="第一页">«</button
+            ><button id="prev-page" aria-label="上一页">‹</button
+            ><span id="page-label">1 / 1</span
+            ><button id="next-page" aria-label="下一页">›</button
+            ><button id="last-page" aria-label="最后一页">»</button>
+          </nav>
+        </footer>
+      </section>
+      <footer class="foot">
+        <div class="memory">
+          <span>当前记录大小 <b id="memory-label">—</b></span>
+          <div class="meter"><i id="memory-bar"></i></div>
+        </div>
+        <span
+          >netinspect <span id="cli-version">—</span
+          ><span id="build-info">—</span></span
+        >
+      </footer>
+    </main>
+    <dialog id="column-dialog">
+      <header>
+        <div><span class="brand-dot">⚙</span> 列显示设置</div>
+        <button id="columns-close" class="icon-btn" aria-label="关闭列设置">
+          ×
+        </button>
+      </header>
+      <p>选择需要显示的列，使用箭头调整顺序。</p>
+      <div id="column-options"></div>
+      <footer>
+        <button id="reset-columns">恢复默认</button
+        ><button id="columns-done" class="primary">完成</button>
+      </footer>
+    </dialog>
+    <dialog id="detail-dialog">
+      <header>
+        <div id="detail-title">记录详情</div>
+        <button id="detail-close" class="icon-btn" aria-label="关闭详情">
+          ×
+        </button>
+      </header>
+      <dl id="detail-body"></dl>
+    </dialog>
+    <script src="/app.js"></script>
+  </body>
 </html>

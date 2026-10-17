@@ -1,2 +1,3 @@
 /netinspect
 /modes/preload/libnetinspect.so
+*.md

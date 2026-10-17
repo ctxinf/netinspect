@@ -35,9 +35,9 @@ func ServeDNS(listenAddr, upstreamAddr string, st *store.Store, emit func(proxy.
 		go func() {
 			defer wg.Done()
 			resp, qname, qtype, answer, ms := forward(pkt, upstreamAddr)
-			q := &store.DNSQuery{QName: qname, QType: qtype, Answer: answer, Ms: ms}
+			q := &store.DNSQuery{Source: addr.String(), Dest: upstreamAddr, QName: qname, QType: qtype, Answer: answer, Ms: ms}
 			st.AddDNS(q)
-			if emit != nil {
+			if emit != nil && q.ID != 0 {
 				qc := *q
 				emit(proxy.Event{Type: "dns", DNS: &qc})
 			}

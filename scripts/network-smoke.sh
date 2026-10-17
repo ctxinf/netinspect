@@ -8,6 +8,8 @@
 
 set -u
 
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
 STEP_TIMEOUT=${NETINSPECT_STEP_TIMEOUT:-25}
 GO_TIMEOUT=${NETINSPECT_GO_TIMEOUT:-90}
 HTTP_PROXY_URL=${NETINSPECT_HTTP_PROXY:-${http_proxy:-${HTTP_PROXY:-http://127.0.0.1:7890}}}
@@ -41,7 +43,7 @@ run_step() {
     local label=$1 limit=$2 tool=$3 rc
     shift 3
     step=$((step + 1))
-    printf '\n[%d/9] %s\n' "$step" "$label"
+    printf '\n[%d/13] %s\n' "$step" "$label"
     if ! command -v "$tool" >/dev/null 2>&1; then
         printf 'SKIP: missing %s\n' "$tool"
         skipped=$((skipped + 1))
@@ -54,6 +56,9 @@ run_step() {
     if (( rc == 0 )); then
         echo 'PASS'
         passed=$((passed + 1))
+    elif (( rc == 77 )); then
+        echo 'SKIP: curl was built without HTTP/3 support'
+        skipped=$((skipped + 1))
     else
         printf 'FAIL: exit=%d (124 means timeout)\n' "$rc"
         failed=$((failed + 1))
@@ -82,6 +87,39 @@ run_step 'DoH: example.com A via Google HTTPS JSON API' "$STEP_TIMEOUT" curl \
     curl --silent --show-error --fail --proxy '' --resolve dns.google:443:8.8.8.8 \
     --connect-timeout 8 --max-time "$STEP_TIMEOUT" --output /dev/null \
     'https://dns.google/resolve?name=example.com&type=A'
+
+# Force genuine HTTP/3: --http3 would silently fall back to TCP on failure.
+# https://cloudflare-quic.com/ is Cloudflare's public QUIC demo.
+# Exit 77 is a capability skip, never a successful QUIC sample.
+run_step 'QUIC: HTTP/3 only via Cloudflare public demo (UDP/443)' "$STEP_TIMEOUT" curl \
+    bash -c '
+        curl --version | grep -Eq "^Features:.*HTTP3" || exit 77
+        version=$(curl --silent --show-error --fail --proxy "" --http3-only \
+            --connect-timeout 8 --max-time "$1" --output /dev/null \
+            --write-out "%{http_version}" https://cloudflare-quic.com/) || exit $?
+        [[ $version == 3 ]]
+    ' bash "$STEP_TIMEOUT"
+
+# A real DNS wire exchange validates that UDP received an answer, not just sendto().
+run_step 'UDP: validated DNS reply from 1.1.1.1:53 (fallback 8.8.8.8)' "$STEP_TIMEOUT" python3 \
+    python3 "$script_dir/network-interactions.py" udp
+
+# The Cloudflare speed-test endpoint returns exactly the requested byte count.
+# Keep both the response and file bounded; all files are removed on exit.
+# Endpoint: https://github.com/cloudflare/speedtest
+run_step 'curl: download a 64 KiB public file (Cloudflare)' "$STEP_TIMEOUT" curl \
+    bash -c '
+        curl --silent --show-error --fail --proxy "" --connect-timeout 8 \
+            --max-time "$1" --max-filesize 65536 --output "$2" \
+            "https://speed.cloudflare.com/__down?bytes=65536" || exit $?
+        [[ $(wc -c < "$2") -eq 65536 ]]
+    ' bash "$STEP_TIMEOUT" "$tmp_dir/download.bin"
+
+# TLS + HTTP Upgrade + masked text frame + matching echo + close frame.
+# No pip packages, browser, credentials or personal config are required.
+# Public service: https://github.com/ably/echo.websocket.org
+run_step 'WSS: echo.websocket.org handshake and message round trip' "$STEP_TIMEOUT" python3 \
+    python3 "$script_dir/network-interactions.py" ws
 
 # A length-prefixed DNS wire query over TLS (RFC 7858), not just a TLS handshake.
 cat >"$tmp_dir/dot.py" <<'DOT'
@@ -161,6 +199,7 @@ run_step 'Telnet: plain TCP to 1.1.1.1:443 (no TLS)' "$STEP_TIMEOUT" telnet \
 
 printf '\nFinished: %d passed, %d failed, %d skipped.\n' "$passed" "$failed" "$skipped"
 echo 'SSH authentication denial and a telnet timeout do not imply TCP connection failure.'
-echo 'Inspect the dashboard during execution; records disappear when the monitored command exits.'
+echo 'QUIC and general UDP may succeed without appearing in the dashboard; netns additionally records UDP/53 DNS.'
+echo 'Records remain in memory until the netinspect service exits.'
 # Each step is a traffic sample; failure never prevents subsequent samples.
 exit 0

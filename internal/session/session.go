@@ -7,6 +7,7 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -23,11 +24,13 @@ import (
 	"syscall"
 	"time"
 
+	"netinspect/internal/cliui"
 	"netinspect/internal/dashboard"
 	"netinspect/internal/observe"
 	"netinspect/internal/proxy"
 	"netinspect/internal/sidechan"
 	"netinspect/internal/store"
+	"netinspect/internal/version"
 	"netinspect/modes/netns"
 	"netinspect/modes/preload"
 	modesptrace "netinspect/modes/ptrace"
@@ -35,12 +38,16 @@ import (
 
 // Config configures one run.
 type Config struct {
-	Mode      string   // preload|ptrace|netns|observe
-	Listen    string   // dashboard listen addr, e.g. 127.0.0.1:17890
-	Command   []string // target command
-	ExePath   string   // this binary (for __agent re-exec)
-	KeepAlive time.Duration
-	runtime   *runtimeState
+	Mode        string   // preload|ptrace|netns|observe
+	Listen      string   // dashboard listen addr, e.g. 127.0.0.1:17890
+	Command     []string // target command
+	ExePath     string   // this binary (for __agent re-exec)
+	TargetUser  string
+	OpenBrowser bool
+	KeepAlive   time.Duration
+	MemoryMB    int64
+	identity    *targetIdentity
+	runtime     *runtimeState
 }
 
 var validModes = map[string]bool{
@@ -65,17 +72,32 @@ func Run(cfg Config) error {
 		return fmt.Errorf("no command given")
 	}
 	if cfg.Mode == "netns" && os.Geteuid() != 0 {
-		return fmt.Errorf("netns mode requires root")
+		return fmt.Errorf("netns 需要 root 权限创建网络命名空间；请通过 sudo 启动，目标程序默认恢复为 sudo 前的用户")
 	}
 
+	if cfg.Mode != "netns" && cfg.TargetUser != "" {
+		return fmt.Errorf("--user 仅适用于 netns 模式")
+	}
+	if cfg.Mode == "netns" {
+		identity, err := resolveTargetIdentity(cfg.TargetUser)
+		if err != nil {
+			return err
+		}
+		cfg.identity = identity
+	}
+	if cfg.Mode == "ptrace" {
+		warnPtraceStartup(cfg.Command)
+	}
+	warnCompatibility(cfg)
+	warnDesktopHandoff(cfg.Command)
 	sid := newSID()
 	cfg.runtime = &runtimeState{done: make(chan struct{}), token: newSID() + newSID() + newSID() + newSID()}
-	st := store.New(store.Session{
+	st := store.NewWithLimit(store.Session{
 		ID:        sid,
 		StartedAt: time.Now().UnixMilli(),
 		Command:   strings.Join(cfg.Command, " "),
 		Mode:      cfg.Mode,
-	})
+	}, cfg.MemoryMB<<20)
 	hub := dashboard.NewHub()
 
 	dashLn, dashURL, err := startDashboard(cfg, st, hub)
@@ -85,8 +107,7 @@ func Run(cfg Config) error {
 	defer dashLn.Close()
 	cfg.runtime.url = dashURL
 	cfg.Listen = strings.TrimPrefix(dashURL, "http://")
-	printBanner(sid, cfg)
-	fmt.Fprintf(os.Stderr, "  面板      %s\n  停止命令  %s stop --url %s --token %s\n\n", dashURL, shellQuote(cfg.ExePath), shellQuote(dashURL), cfg.runtime.token)
+	printBanner()
 	var runErr error
 	switch cfg.Mode {
 	case "preload":
@@ -100,6 +121,7 @@ func Run(cfg Config) error {
 	}
 	// Setup failures should return immediately; only completed targets retain the dashboard.
 	if st.Session().EndedAt != 0 {
+		warnNoRecords(cfg, st.Stats(), st.Session().StartedAt, runErr)
 		retain(cfg, runErr)
 	}
 	return runErr
@@ -123,11 +145,11 @@ func retain(cfg Config, runErr error) {
 	if runErr != nil {
 		mark = "!"
 	}
-	fmt.Fprintf(os.Stderr, "\n  %s 目标程序已结束 · %s\n", mark, result)
+	cliui.Printf("\n%s 目标程序已结束 · %s\n", mark, result)
 	if cfg.KeepAlive == 0 {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "  面板将继续运行 %s，至 %s\n  %s\n  可运行上方停止命令，或在网页点击「结束 Server」。\n", cfg.KeepAlive, time.Now().Add(cfg.KeepAlive).Format("15:04:05"), cfg.runtime.url)
+	cliui.Printf("面板将继续运行 %s，至 %s；可在网页点击「关闭服务」。\n或用 %s stop --url %s --token %s 强制停止\n或用 Ctrl+C 直接结束\n", cfg.KeepAlive, time.Now().Add(cfg.KeepAlive).Format("15:04:05"), shellQuote(cfg.ExePath), shellQuote(cfg.runtime.url), cfg.runtime.token)
 	timer := time.NewTimer(cfg.KeepAlive)
 	defer timer.Stop()
 	sig := make(chan os.Signal, 1)
@@ -138,7 +160,7 @@ func retain(cfg Config, runErr error) {
 	case <-cfg.runtime.done:
 	case <-sig:
 	}
-	fmt.Fprintln(os.Stderr, "  · 面板已关闭，内存数据已释放")
+	cliui.Printf("· 面板已关闭，内存数据已释放\n")
 }
 
 func dashboardPort(listen string) int {
@@ -153,17 +175,14 @@ func dashboardPort(listen string) int {
 	return n
 }
 
-func printBanner(sid string, cfg Config) {
-	fmt.Fprintf(os.Stderr, "\n  ◉ netinspect  /  %s\n\n  模式      %s\n  目标      %s\n", sid, cfg.Mode, strings.Join(cfg.Command, " "))
-	if cfg.Mode == "observe" {
-		fmt.Fprintln(os.Stderr, "  捕获      TCP 连接元数据 · /proc 观察")
-	} else {
-		fmt.Fprintln(os.Stderr, "  捕获      TCP 经本地代理 · TLS 仅 SNI/ALPN")
-	}
-	if cfg.Mode == "netns" {
-		fmt.Fprintln(os.Stderr, "  DNS       记录 UDP/53 查询")
-	} else {
-		fmt.Fprintln(os.Stderr, "  DNS       本模式不拦截；UDP 不覆盖")
+func printBanner() {
+	cliui.Printf("──────────────── netinspect %s ────────────────\n", version.Current().Version)
+}
+
+func printPanel(cfg Config) {
+	cliui.Printf("· 面板: %s\n", cfg.runtime.url)
+	if cfg.OpenBrowser {
+		openBrowser(cfg.runtime.url, cfg.identity)
 	}
 }
 
@@ -243,7 +262,7 @@ func runPreload(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) err
 
 	dashPort := dashboardPort(cfg.Listen)
 
-	fmt.Fprintf(os.Stderr, "  · TCP: 代理入口 127.0.0.1:%d\n", proxyPort)
+	cliui.Printf("· TCP: 代理入口 127.0.0.1:%d\n", proxyPort)
 
 	cmd := exec.Command(cfg.Command[0], cfg.Command[1:]...)
 	cmd.Env = append(os.Environ(),
@@ -253,10 +272,17 @@ func runPreload(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) err
 		"NETINSPECT_DASH_PORT="+strconv.Itoa(dashPort),
 	)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	printPanel(cfg)
+	endOutput := cliui.TargetOutput()
+	defer endOutput()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	expectedNS, _ := os.Readlink("/proc/self/ns/net")
+	stopMonitor := monitorTarget(cfg, cmd.Process.Pid, expectedNS)
+	defer stopMonitor()
 	runErr := waitTarget(cmd)
+	stopMonitor()
 	proxyLn.Close()
 	px.Close()
 	st.EndSession()
@@ -312,8 +338,11 @@ func runPtrace(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) erro
 
 	dashPort := dashboardPort(cfg.Listen)
 
-	fmt.Fprintf(os.Stderr, "  · TCP: 透明代理入口 127.0.0.1:[::1]:%d (ptrace 改写 connect)\n", proxyPort)
+	cliui.Printf("· TCP: 透明代理入口 127.0.0.1:[::1]:%d (ptrace 改写 connect)\n", proxyPort)
 
+	printPanel(cfg)
+	endOutput := cliui.TargetOutput()
+	defer endOutput()
 	traceErr := modesptrace.Run(cfg.Command[0], cfg.Command[1:], side.Path(), proxyPort, dashPort)
 	proxyLn4.Close()
 	proxyLn6.Close()
@@ -345,8 +374,8 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 	}
 	defer n.Cleanup()
 
-	fmt.Fprintf(os.Stderr, "  · netns: %s subnet=%s proxy=127.0.0.1:%d (ns内)\n", n.Name, n.Subnet, proxyPort)
-	fmt.Fprintf(os.Stderr, "  · DNS: 转发器 %s:53 -> 上游 %s\n", n.NSIP, n.UpstreamDNS)
+	cliui.Printf("· netns: %s subnet=%s proxy=127.0.0.1:%d (ns内)\n", n.Name, n.Subnet, proxyPort)
+	cliui.Printf("· DNS: 转发器 %s:53 -> 上游 %s\n", n.NSIP, n.UpstreamDNS)
 
 	agent := n.Exec(cfg.ExePath, "__agent",
 		"--sid", sid,
@@ -356,6 +385,7 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 		"--ns-ip", n.NSIP,
 		"--upstream-dns", n.UpstreamDNS,
 		"--control-token", cfg.runtime.token,
+		"--memory-mb", strconv.FormatInt(cfg.MemoryMB, 10),
 	)
 	agent.Stdout, agent.Stderr = os.Stdout, os.Stderr
 	if err := agent.Start(); err != nil {
@@ -377,12 +407,22 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 	forward.Transport = &http.Transport{Proxy: nil}
 	cfg.runtime.dash.SetDataHandler(forward)
 
-	target := n.Exec(cfg.Command[0], cfg.Command[1:]...)
+	targetArgs := cfg.identity.wrap(cfg.Command)
+	target := n.Exec(targetArgs[0], targetArgs[1:]...)
+	target.Env = cfg.identity.environment()
 	target.Stdin, target.Stdout, target.Stderr = os.Stdin, os.Stdout, os.Stderr
+	printPanel(cfg)
+	endOutput := cliui.TargetOutput()
+	defer endOutput()
 	if err := target.Start(); err != nil {
 		return err
 	}
+	expectedNS, _ := os.Readlink(fmt.Sprintf("/proc/%d/ns/net", agent.Process.Pid))
+	stopMonitor := monitorTarget(cfg, target.Process.Pid, expectedNS)
+	defer stopMonitor()
 	runErr := waitTarget(target)
+	stopMonitor()
+	endOutput()
 	req, _ := http.NewRequest(http.MethodPost, dashURL+"/api/end", nil)
 	req.Header.Set("Authorization", "Bearer "+cfg.runtime.token)
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil}}
@@ -390,7 +430,17 @@ func runNetns(cfg Config, sid string, st *store.Store, hub *dashboard.Hub, dashP
 	if err == nil {
 		res.Body.Close()
 	} else {
-		fmt.Fprintf(os.Stderr, "  ! 无法更新 netns 会话状态: %v\n", err)
+		cliui.Printf("! 无法更新 netns 会话状态: %v\n", err)
+	}
+	// The host store has no connection data in netns mode; use agent statistics.
+	if response, err := client.Get(dashURL + "/api/session"); err == nil {
+		var snapshot struct {
+			Stats store.Stats `json:"stats"`
+		}
+		if response.StatusCode == http.StatusOK && json.NewDecoder(response.Body).Decode(&snapshot) == nil {
+			warnNoRecords(cfg, snapshot.Stats, st.Session().StartedAt, runErr)
+		}
+		response.Body.Close()
 	}
 	st.EndSession()
 	retain(cfg, runErr)
@@ -415,13 +465,25 @@ func waitTCP(host string, port int, timeout time.Duration) error {
 func runObserve(cfg Config, sid string, st *store.Store, hub *dashboard.Hub) error {
 	cmd := exec.Command(cfg.Command[0], cfg.Command[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	printPanel(cfg)
+	endOutput := cliui.TargetOutput()
+	defer endOutput()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go observe.Poll(ctx, cmd.Process.Pid, st)
+	var observeWarnings sync.Map
+	go observe.PollWithDiagnostics(ctx, cmd.Process.Pid, st, func(message string) {
+		if _, loaded := observeWarnings.LoadOrStore(message, true); !loaded {
+			cliui.Printf("! WARN [observe]: %s\n", message)
+		}
+	})
+	expectedNS, _ := os.Readlink("/proc/self/ns/net")
+	stopMonitor := monitorTarget(cfg, cmd.Process.Pid, expectedNS)
+	defer stopMonitor()
 	runErr := waitTarget(cmd)
+	stopMonitor()
 	cancel()
 	// let the poller record final state
 	time.Sleep(400 * time.Millisecond)
@@ -447,4 +509,21 @@ func waitTarget(cmd *exec.Cmd) error {
 		}
 	}()
 	return cmd.Wait()
+}
+
+// Opening a browser is best effort and never delays the wrapped program.
+func openBrowser(panelURL string, identity *targetIdentity) {
+	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		return
+	}
+	path, err := exec.LookPath("xdg-open")
+	if err != nil {
+		return
+	}
+	args := identity.wrap([]string{path, panelURL})
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Env = identity.environment()
+	if cmd.Start() == nil {
+		go func() { _ = cmd.Wait() }()
+	}
 }

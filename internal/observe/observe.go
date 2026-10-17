@@ -7,6 +7,7 @@ package observe
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -27,6 +28,9 @@ type tcpEntry struct {
 // Poll watches rootPID's process tree until ctx is done or the root exits,
 // recording new/vanished TCP connections in st.
 func Poll(ctx context.Context, rootPID int, st *store.Store) {
+	PollWithDiagnostics(ctx, rootPID, st, nil)
+}
+func PollWithDiagnostics(ctx context.Context, rootPID int, st *store.Store, warn func(string)) {
 	prev := map[string]*connTrack{}
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
@@ -40,11 +44,11 @@ func Poll(ctx context.Context, rootPID int, st *store.Store) {
 		if !pidAlive(rootPID) {
 			// give sockets a beat to vanish, then finish
 			time.Sleep(300 * time.Millisecond)
-			snapshot(st, prev, rootPID)
+			snapshot(st, prev, rootPID, warn)
 			finishAll(st, prev)
 			return
 		}
-		snapshot(st, prev, rootPID)
+		snapshot(st, prev, rootPID, warn)
 	}
 }
 
@@ -72,17 +76,17 @@ func resultFor(state string) string {
 }
 
 // snapshot diffs the current TCP view against prev.
-func snapshot(st *store.Store, prev map[string]*connTrack, rootPID int) {
+func snapshot(st *store.Store, prev map[string]*connTrack, rootPID int, warn func(string)) {
 	tree := descendents(rootPID)
 	// map inode -> (pid, comm)
 	inodeOwner := map[string][2]string{}
 	for pid := range tree {
-		for _, ino := range socketInodes(pid) {
+		for _, ino := range socketInodes(pid, warn) {
 			inodeOwner[ino] = [2]string{strconv.Itoa(pid), commOf(pid)}
 		}
 	}
 	seen := map[string]bool{}
-	for _, e := range readTCP() {
+	for _, e := range readTCP(warn) {
 		owner, ok := inodeOwner[e.inode]
 		if !ok {
 			continue
@@ -94,8 +98,9 @@ func snapshot(st *store.Store, prev map[string]*connTrack, rootPID int) {
 			pid, _ := strconv.Atoi(owner[0])
 			c := &store.Conn{
 				PID: pid, Comm: owner[1], Mode: "observe",
+				Source:   net.JoinHostPort(e.localIP, strconv.Itoa(e.localPort)),
 				OrigHost: e.remIP, OrigIP: e.remIP, OrigPort: e.remPort,
-				Route: "DIRECT", Proto: guessProto(e.remPort), Result: "open",
+				Route: "DIRECT", Proto: "TCP", Result: "open",
 			}
 			id := st.AddConnection(c)
 			prev[key] = &connTrack{id: id, state: e.state}
@@ -109,16 +114,6 @@ func snapshot(st *store.Store, prev map[string]*connTrack, rootPID int) {
 			delete(prev, key)
 		}
 	}
-}
-
-func guessProto(port int) string {
-	if port == 443 || port == 8443 {
-		return "tls"
-	}
-	if port == 80 || port == 8080 {
-		return "http"
-	}
-	return "tcp"
 }
 
 // descendents returns rootPID and all its (transitive) children.
@@ -164,10 +159,13 @@ func descendents(root int) map[int]bool {
 	return out
 }
 
-func socketInodes(pid int) []string {
+func socketInodes(pid int, warn func(string)) []string {
 	var out []string
 	fds, err := os.ReadDir(fmt.Sprintf("/proc/%d/fd", pid))
 	if err != nil {
+		if os.IsPermission(err) && warn != nil {
+			warn("无法读取进程套接字描述符（权限不足）；部分目标连接不能归属到进程。")
+		}
 		return nil
 	}
 	for _, f := range fds {
@@ -182,11 +180,14 @@ func socketInodes(pid int) []string {
 	return out
 }
 
-func readTCP() []tcpEntry {
+func readTCP(warn func(string)) []tcpEntry {
 	var out []tcpEntry
 	for _, f := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
 		data, err := os.ReadFile(f)
 		if err != nil {
+			if warn != nil && (f == "/proc/net/tcp" || !os.IsNotExist(err)) {
+				warn("无法读取 " + f + "：" + err.Error() + "；对应 TCP 连接无法采集。")
+			}
 			continue
 		}
 		v6 := strings.HasSuffix(f, "6")
@@ -195,11 +196,13 @@ func readTCP() []tcpEntry {
 			if len(flds) < 10 {
 				continue
 			}
+			localIP, localPort := splitAddr(flds[1], v6)
 			remIP, remPort := splitAddr(flds[2], v6)
 			if remPort == 0 {
 				continue
 			}
 			out = append(out, tcpEntry{
+				localIP: localIP, localPort: localPort,
 				remIP: remIP, remPort: remPort,
 				state: flds[3], inode: flds[9],
 			})

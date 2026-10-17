@@ -16,15 +16,20 @@ import (
 	"netinspect/internal/session"
 )
 
+const modeHelp = "--mode MODE  preload（默认）| ptrace | netns | observe"
+
 type fileConfig struct {
-	Mode      *string `json:"mode"`
-	Listen    *string `json:"listen"`
-	Port      *int    `json:"port"`
-	KeepAlive *string `json:"keep_alive"`
+	TargetUser  *string `json:"user"`
+	OpenBrowser *bool   `json:"open_browser"`
+	Mode        *string `json:"mode"`
+	Listen      *string `json:"listen"`
+	Port        *int    `json:"port"`
+	KeepAlive   *string `json:"keep_alive"`
+	MemoryMB    *int64  `json:"memory_mb"`
 }
 
 func parseRun(args []string, defaultMode string) (session.Config, error) {
-	cfg := session.Config{Mode: defaultMode, Listen: "127.0.0.1:17890", KeepAlive: 30 * time.Minute}
+	cfg := session.Config{Mode: defaultMode, Listen: "127.0.0.1:17890", KeepAlive: 30 * time.Minute, MemoryMB: 128, OpenBrowser: true}
 	// Only the bare command shortcut may omit the separator.
 	requireSeparator := false
 	if len(args) > 0 && args[0] == "run" {
@@ -51,13 +56,22 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		}
 		key, value, equal := strings.Cut(a, "=")
 		switch key {
-		case "--config", "--mode", "--listen", "--port", "--keep-alive":
+		case "--open-browser":
+			// Boolean flags use --open-browser or --open-browser=false.
+
+		case "--config", "--mode", "--listen", "--port", "--keep-alive", "--memory-mb", "--user":
 			if !equal {
 				i++
 				if i >= len(args) {
+					if key == "--mode" {
+						return cfg, fmt.Errorf("--mode 需要一个值\n%s", modeHelp)
+					}
 					return cfg, fmt.Errorf("%s 需要一个值", key)
 				}
 				value = args[i]
+			}
+			if key == "--mode" && (value == "" || strings.HasPrefix(value, "--")) {
+				return cfg, fmt.Errorf("--mode 需要一个值\n%s", modeHelp)
 			}
 			if key == "--config" {
 				explicit = value
@@ -101,6 +115,15 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 		if err != nil {
 			return cfg, fmt.Errorf("配置 %s: %w", path, err)
 		}
+		if fc.TargetUser != nil {
+			cfg.TargetUser = *fc.TargetUser
+		}
+		if fc.OpenBrowser != nil {
+			cfg.OpenBrowser = *fc.OpenBrowser
+		}
+		if fc.MemoryMB != nil {
+			cfg.MemoryMB = *fc.MemoryMB
+		}
 		if fc.Mode != nil {
 			cfg.Mode = *fc.Mode
 		}
@@ -123,8 +146,11 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	fs := flag.NewFlagSet("netinspect", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() { fmt.Print(usage) }
+	fs.StringVar(&cfg.TargetUser, "user", cfg.TargetUser, "")
+	fs.BoolVar(&cfg.OpenBrowser, "open-browser", cfg.OpenBrowser, "")
 	fs.StringVar(&cfg.Mode, "mode", cfg.Mode, "")
 	fs.StringVar(&cfg.Listen, "listen", cfg.Listen, "")
+	fs.Int64Var(&cfg.MemoryMB, "memory-mb", cfg.MemoryMB, "")
 	fs.DurationVar(&cfg.KeepAlive, "keep-alive", cfg.KeepAlive, "")
 	var configPath string
 	fs.StringVar(&configPath, "config", explicit, "")
@@ -141,6 +167,9 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	if err != nil {
 		return cfg, err
 	}
+	if cfg.MemoryMB < 1 || cfg.MemoryMB > 1048576 {
+		return cfg, fmt.Errorf("memory-mb 必须在 1–1048576 之间")
+	}
 	if cfg.KeepAlive < 0 {
 		return cfg, fmt.Errorf("keep-alive 不能为负数")
 	}
@@ -148,7 +177,10 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	switch cfg.Mode {
 	case "preload", "ptrace", "netns", "observe":
 	default:
-		return cfg, fmt.Errorf("无效 mode %q", cfg.Mode)
+		return cfg, fmt.Errorf("无效 mode %q\n%s", cfg.Mode, modeHelp)
+	}
+	if cfg.TargetUser != "" && cfg.Mode != "netns" {
+		return cfg, fmt.Errorf("--user 仅适用于 netns 模式")
 	}
 	host, p, err := net.SplitHostPort(cfg.Listen)
 	_ = host
@@ -161,11 +193,8 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 	}
 	cfg.Command = fs.Args()
 	if len(cfg.Command) == 0 {
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/sh"
-		}
-		cfg.Command = []string{shell}
+		fmt.Print(usage)
+		return cfg, flag.ErrHelp
 	}
 	cfg.ExePath, err = os.Executable()
 	return cfg, err
@@ -206,6 +235,6 @@ func stopCmd(args []string) error {
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("关闭失败: %s", res.Status)
 	}
-	fmt.Println("  ✓ 面板已关闭")
+	fmt.Println("✓ 面板已关闭")
 	return nil
 }

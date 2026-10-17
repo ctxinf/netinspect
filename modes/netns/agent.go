@@ -13,13 +13,17 @@ import (
 
 // RunAgent starts the proxy core (transparent frontend), the dashboard and
 // the DNS forwarder inside the network namespace. It runs until killed.
-func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS, token string) error {
-	st := store.New(store.Session{
+func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS, token string, limits ...int64) error {
+	limit := store.DefaultMemoryLimit
+	if len(limits) > 0 && limits[0] > 0 {
+		limit = limits[0]
+	}
+	st := store.NewWithLimit(store.Session{
 		ID:        sid,
 		StartedAt: time.Now().UnixMilli(),
 		Command:   command,
 		Mode:      "netns",
-	})
+	}, limit)
 	hub := dashboard.NewHub()
 	px := proxy.New(proxy.Config{
 		Mode:         "netns",

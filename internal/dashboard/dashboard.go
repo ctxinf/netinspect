@@ -10,10 +10,12 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"netinspect/internal/proxy"
 	"netinspect/internal/store"
+	"netinspect/internal/version"
 )
 
 //go:embed web/*
@@ -78,6 +80,7 @@ func New(st *store.Store, hub *Hub) *Server {
 	d.mux.HandleFunc("/api/session", d.handleSession)
 	d.mux.HandleFunc("/api/connections", d.handleConnections)
 	d.mux.HandleFunc("/api/dns", d.handleDNS)
+	d.mux.HandleFunc("/api/items", d.handleItems)
 	d.mux.HandleFunc("/api/ws", d.handleWS)
 	d.mux.HandleFunc("/", d.handleUI)
 	return d
@@ -94,7 +97,7 @@ func (d *Server) Handler() http.Handler {
 		d.dataMu.RLock()
 		data := d.data
 		d.dataMu.RUnlock()
-		if data != nil && (r.URL.Path == "/api/session" || r.URL.Path == "/api/connections" || r.URL.Path == "/api/dns" || r.URL.Path == "/api/ws") {
+		if data != nil && (r.URL.Path == "/api/session" || r.URL.Path == "/api/connections" || r.URL.Path == "/api/dns" || r.URL.Path == "/api/ws" || r.URL.Path == "/api/items") {
 			data.ServeHTTP(w, r)
 			return
 		}
@@ -168,6 +171,8 @@ func (d *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"session": d.store.Session(),
 		"stats":   d.store.Stats(),
+		"memory":  d.store.Memory(),
+		"version": version.Current(),
 	})
 }
 
@@ -215,4 +220,35 @@ func (d *Server) handleUI(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	}
 	w.Write(data)
+}
+
+func (d *Server) handleItems(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	page, _ := strconv.Atoi(v.Get("page"))
+	size, _ := strconv.Atoi(v.Get("size"))
+	status := v.Get("status")
+	if status != "active" && status != "closed" && status != "" {
+		http.Error(w, "invalid status", 400)
+		return
+	}
+	direction := v.Get("direction")
+	if direction != "" && direction != "asc" && direction != "desc" {
+		http.Error(w, "invalid direction", 400)
+		return
+	}
+	sortKeys := strings.Split(v.Get("sort"), ",")
+	if len(sortKeys) > 3 {
+		http.Error(w, "at most three sort columns", 400)
+		return
+	}
+	for _, key := range sortKeys {
+		switch key {
+		case "", "kind", "time", "age", "host", "process", "pid", "protocol", "sni", "alpn", "source", "dest", "ip", "port", "route", "mode", "latency", "down", "up", "result":
+		default:
+			http.Error(w, "invalid sort column", 400)
+			return
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, d.store.QueryItems(store.Query{Q: v.Get("q"), Status: status, Sort: v.Get("sort"), Direction: direction, Page: page, Size: size}))
 }
