@@ -14,6 +14,31 @@ go build -o netinspect ./cmd/netinspect
 
 ## 用法
 
+### Release 与 Homebrew
+
+推送 tag 后，GitHub Actions 自动运行测试、构建 Linux amd64 binary，并发布包含
+`netinspect_linux_amd64.tar.gz` 和 `SHA256SUMS` 的 GitHub Release。
+binary 已嵌入 preload 库；该库在 Ubuntu 22.04 上编译，需要 glibc 2.35 或更新版本。
+
+正式版本使用 `v1.2.3` 或 `1.2.3` 格式。带 `-` 的 tag（如 `v1.2.3-rc.1`）
+发布为 prerelease，不更新 Homebrew。正式发布后自动更新 `ctxinf/homebrew-tap` 的
+`Formula/netinspect.rb`，相同 tag 的工作流可重跑以恢复上传或 tap 更新。
+
+首次使用前，在本仓库的 Actions secrets 中配置 `HOMEBREW_TAP_TOKEN`：
+使用可访问 `ctxinf/homebrew-tap` 且具有 **Contents: Read and write** 权限的
+fine-grained PAT，并确保允许向 tap 的默认分支直接推送。Release 使用自带的
+`GITHUB_TOKEN`，无需另配。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+
+# Linux x86_64 上安装
+brew install ctxinf/tap/netinspect
+```
+
+### 运行
+
 ```bash
 netinspect                                          # 默认 preload，进入 $SHELL
 netinspect curl -I https://example.com                # 省略 run 和 --

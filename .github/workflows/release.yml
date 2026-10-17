@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      CGO_ENABLED: '0'
+      GOOS: linux
+      GOARCH: amd64
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build embedded preload library
+        run: make -C modes/preload
+
+      - name: Test
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Build and check binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          build_id="${GITHUB_SHA:0:12}"
+          go build -trimpath \
+            -ldflags "-s -w -X=netinspect/internal/version.Tag=${RELEASE_TAG} -X=netinspect/internal/version.Build=${build_id}" \
+            -o dist/package/netinspect ./cmd/netinspect
+          dist/package/netinspect --version
+          python3 scripts/cli-smoke.py "$PWD/dist/package/netinspect"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep tag text out of filenames: arbitrary Git tags may contain slashes.
+          cp README.md LICENSE dist/package/
+          tar -C dist/package -czf dist/netinspect_linux_amd64.tar.gz netinspect README.md LICENSE
+          cd dist
+          sha256sum netinspect_linux_amd64.tar.gz > SHA256SUMS
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets=(dist/netinspect_linux_amd64.tar.gz dist/SHA256SUMS)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            flags=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --verify-tag --title "$RELEASE_TAG" --generate-notes "${flags[@]}"
+          fi
+
+      - name: Check Homebrew credentials
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo '::error::Set HOMEBREW_TAP_TOKEN with Contents read/write access to ctxinf/homebrew-tap.'
+            exit 1
+          fi
+
+      - name: Check out Homebrew tap
+        if: ${{ !contains(github.ref_name, '-') }}
+        uses: actions/checkout@v6
+        with:
+          repository: ctxinf/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Homebrew formula
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/workflows/homebrew-formula.py \
+            dist/netinspect_linux_amd64.tar.gz homebrew-tap/Formula/netinspect.rb
+          cd homebrew-tap
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/netinspect.rb
+          if ! git diff --cached --quiet; then
+            git commit -m "netinspect ${RELEASE_TAG}"
+            git push
+          fi
