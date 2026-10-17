@@ -21,3 +21,15 @@ Example: `curl --silent <DASHBOARD_URL>/api/connections`
 
 Keep command arguments as separate argv entries. Avoid reconstructing untrusted
 commands as shell strings. Do not guess a session URL or reuse an old control token.
+
+## Explicit upstream proxy
+
+Use `--upstream-proxy <URL>` or JSON `upstream_proxy` for captured TCP in
+preload, ptrace or netns. Accepted schemes: http, https, socks5, socks5h.
+URL credentials enable Basic or SOCKS5 username/password authentication.
+HTTPS uses system certificate trust. Failure never falls back to direct.
+DNS/UDP are not tunneled; observe rejects this option. socks5 resolves names
+locally; socks5h and HTTP(S) pass names remotely when the interceptor has a
+name. Applications that already resolved a name supply an IP instead.
+Host loopback proxy addresses are not reachable as host addresses inside netns.
+Prefer a private config file for credentials; do not include them in reports.

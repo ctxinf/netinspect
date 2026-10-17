@@ -2,6 +2,9 @@
 """Local-only CLI lifecycle checks: python3 scripts/cli-smoke.py /path/to/netinspect."""
 import json
 import os
+import pty
+import socketserver
+import threading
 from pathlib import Path
 import re
 import shlex
@@ -34,6 +37,30 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
         return subprocess.run([binary, *args], cwd=directory, env=env, text=True,
                               capture_output=True, timeout=10, **kw)
 
+    def terminal_help(no_color=False):
+        master, slave = pty.openpty()
+        terminal_env = {**env, 'TERM': 'xterm-256color'}
+        terminal_env.pop('NO_COLOR', None)
+        if no_color:
+            terminal_env['NO_COLOR'] = '1'
+        process = subprocess.Popen([binary, '--help'], cwd=directory, env=terminal_env,
+                                   stdin=subprocess.DEVNULL, stdout=slave, stderr=subprocess.PIPE)
+        os.close(slave)
+        chunks = []
+        try:
+            while True:
+                try:
+                    chunk = os.read(master, 8192)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        finally:
+            os.close(master)
+            assert process.wait(timeout=5) == 0
+        return b''.join(chunks)
+
     def launch(args):
         log = tempfile.TemporaryFile(mode='w+t')
         process = subprocess.Popen([binary, *args], cwd=directory, env=env,
@@ -43,18 +70,18 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
         while time.monotonic() < deadline:
             log.seek(0)
             text = log.read()
-            match = re.search(r'或用 (.+) 强制停止', text)
+            match = re.search(r'Or run (.+)', text)
             if match:
-                assert text.index('目标程序已结束') < match.start(), text
-                assert '或用 Ctrl+C 直接结束' in text, text
+                assert text.index('Target exited') < match.start(), text
+                assert 'Or press Ctrl+C to stop' in text, text
                 command = shlex.split(match[1])
                 return process, command[command.index('--url') + 1], command[command.index('--token') + 1], command
-            panel = re.search(r'· 面板: (http://[^\s]+)', text)
+            panel = re.search(r'· Dashboard: (http://[^\s]+)', text)
             if panel and 'sleep' in args:
                 req = urllib.request.Request(panel[1] + '/api/control', headers={'X-Netinspect-Control': '1'})
                 with http.open(req, timeout=2) as response:
                     token = json.load(response)['token']
-                assert '强制停止' not in text, text
+                assert 'Or run' not in text, text
                 return process, panel[1], token, None
             if process.poll() is not None:
                 raise AssertionError(text)
@@ -70,33 +97,61 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
         raise AssertionError('target did not end')
 
     try:
-        assert run(['--help']).returncode == 0
+        help_result = run(['--help'])
+        assert help_result.returncode == 0 and 'alias ni=netinspect' in help_result.stdout
+        assert 'Local config:' in help_result.stdout and '[missing]' in help_result.stdout
+        assert '[exists]' in help_result.stdout and '\x1b[' not in help_result.stdout
+        assert b'\x1b[1;32mUsage:' in terminal_help()
+        assert b'\x1b[' not in terminal_help(no_color=True)
+        for topic in ['run', 'stop', 'skills', 'init-config', 'version']:
+            assert run(['help', topic]).returncode == 0
+        assert 'Session control token' in run(['stop', '--help']).stdout
+        assert run(['skills', 'list']).returncode == 0
+        assert 'HTTP API reference' in run(['skills', 'get', 'core', '--full']).stdout
+        # Existing configuration must survive initialization unchanged.
+        config_path = Path(directory, 'netinspect', 'config.json')
+        before = config_path.read_bytes()
+        assert run(['init-config']).returncode != 0
+        assert config_path.read_bytes() == before
+        config_path.unlink()
+        assert run(['init-config']).returncode == 0
+        assert json.loads(config_path.read_text())['mode'] == 'preload'
+        config_path.write_bytes(before)
+        # Both inherited markers and /proc ancestry block nested capture.
+        for mode in ['preload', 'ptrace', 'observe']:
+            nested = run(['--mode', mode, '--keep-alive', '0', '--', binary,
+                          '--keep-alive', '0', '--', 'true'])
+            assert nested.returncode != 0 and 'nested netinspect' in nested.stderr, nested
+        nested = run(['--mode', 'observe', '--keep-alive', '0', '--', 'env',
+                      '-u', 'NETINSPECT_ACTIVE_SESSION', binary,
+                      '--keep-alive', '0', '--', 'true'])
+        assert nested.returncode != 0 and 'ancestor PID' in nested.stderr, nested
         for invalid in [['run', 'true'], ['--mode', 'observe', 'true']]:
             result = run(invalid)
-            assert result.returncode != 0 and '必须添加 --' in result.stderr, result
+            assert result.returncode != 0 and 'add -- before the target command' in result.stderr, result
         result = run(['--keep-alive', '0', '--', 'sh', '-c', 'printf "%s" "$1"', 'sh', '--mode=observe'])
         assert result.returncode == 0 and result.stdout == '--mode=observe', result
-        assert '会话      ' not in result.stderr and '模式      ' not in result.stderr
-        assert '强制停止' not in result.stderr
-        startup = result.stderr.split('──────────────── 目标程序输出')[0]
-        assert startup.strip().splitlines()[-1].startswith('· 面板: http://'), result.stderr
+        assert 'Session      ' not in result.stderr and 'Mode      ' not in result.stderr
+        assert 'Or run' not in result.stderr
+        startup = result.stderr.split('──────────────── Target output')[0]
+        assert startup.strip().splitlines()[-1].startswith('· Dashboard: http://'), result.stderr
         assert '\x1b[' not in result.stderr, 'redirected logs contain ANSI escapes'
         assert all(not line.startswith((' ', '\t')) for line in result.stderr.splitlines()), result.stderr
-        assert '──────────────── 目标程序输出 ────────────────' in result.stderr
-        assert result.stderr.index('目标程序输出结束') < result.stderr.index('目标程序已结束'), result.stderr
+        assert '──────────────── Target output ────────────────' in result.stderr
+        assert result.stderr.index('End of target output') < result.stderr.index('Target exited'), result.stderr
         assert run(['--version']).stdout.strip().startswith('netinspect ')
         assert run(['run', '--keep-alive', '0', '--', 'sh', '-c', 'exit 7']).returncode == 7
         result = run(['--keep-alive', '200ms', '--', 'true'])
-        assert result.returncode == 0 and '面板已关闭' in result.stderr, result
+        assert result.returncode == 0 and 'Dashboard stopped' in result.stderr, result
         # No arguments displays help without starting a target or dashboard.
         Path(directory, '.netinspect.json').write_text('{"keep_alive":"0"}')
         shortcut = run(['sh', '-c', 'printf shortcut', '--mode', 'observe'])
         assert shortcut.returncode == 0 and shortcut.stdout == 'shortcut', shortcut
         result = run([], input='printf "%s" "$NETINSPECT_SOCKS_PORT"\nexit\n')
-        assert result.returncode == 0 and "--mode MODE" in result.stdout and "面板:" not in result.stderr, result
+        assert result.returncode == 0 and "--mode <MODE>" in result.stdout and "Dashboard:" not in result.stderr, result
         for args in (["--mode"], ["--mode", "rplace"]):
             result = run(args)
-            assert result.returncode != 0 and "preload（默认）| ptrace | netns | observe" in result.stderr, result
+            assert result.returncode != 0 and "preload (default)| ptrace | netns | observe" in result.stderr, result
         Path(directory, '.netinspect.json').unlink()
 
         with socket.socket() as reservation:
@@ -135,14 +190,43 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
         assert result.returncode == 13, result
         result = run(['--mode', 'ptrace', '--keep-alive', '0', '--', sys.executable,
                       '-c', 'import ctypes; ctypes.CDLL(None).ptrace(0, 0, 0, 0)'])
-        assert result.returncode == 0 and result.stderr.count('尝试嵌套 ptrace') == 1, result
+        assert result.returncode == 0 and result.stderr.count('attempted nested ptrace') == 1, result
         result = run(['--keep-alive', '0', '--', 'sh', '-c',
                       'unset LD_PRELOAD; exec sleep 2.2'])
-        assert result.returncode == 0 and result.stderr.count('当前目标 PID 未加载 libnetinspect.so') == 1, result
+        assert result.returncode == 0 and result.stderr.count('target PID has not loaded libnetinspect.so') == 1, result
         result = run(['--keep-alive', '0', '--', 'sleep', '2.2'])
-        assert result.returncode == 0 and '未加载 libnetinspect.so' not in result.stderr, result
+        assert result.returncode == 0 and 'has not loaded libnetinspect.so' not in result.stderr, result
 
-        print('CLI smoke passed: defaults, passthrough, exit codes, timer, shell, concurrent ports, stop isolation, web shutdown')
+        class UpstreamHandler(socketserver.StreamRequestHandler):
+            def handle(self):
+                self.connection.settimeout(4)
+                line = self.rfile.readline().decode().strip()
+                upstream_requests.append(line)
+                while self.rfile.readline().strip():
+                    pass
+                self.wfile.write(b'HTTP/1.1 200 Connected\r\n\r\n')
+                self.wfile.flush()
+                while self.rfile.readline().strip():
+                    pass
+                body = b'upstream-routed'
+                self.wfile.write(b'HTTP/1.1 200 OK\r\nContent-Length: 15\r\nConnection: close\r\n\r\n' + body)
+                self.wfile.flush()
+
+        upstream_requests = []
+        with socketserver.TCPServer(('127.0.0.1', 0), UpstreamHandler) as proxy_server:
+            thread = threading.Thread(target=proxy_server.serve_forever, daemon=True)
+            thread.start()
+            proxy_url = 'http://127.0.0.1:' + str(proxy_server.server_address[1])
+            for mode in ['preload', 'ptrace']:
+                response = run(['--mode', mode, '--keep-alive', '0', '--upstream-proxy', proxy_url,
+                                '--', 'curl', '--silent', '--show-error', '--noproxy', '*',
+                                '--max-time', '4', 'http://127.0.0.2:54321/'])
+                assert response.returncode == 0 and response.stdout == 'upstream-routed', response
+            proxy_server.shutdown()
+            thread.join(timeout=5)
+        assert upstream_requests == ['CONNECT 127.0.0.2:54321 HTTP/1.1'] * 2, upstream_requests
+
+        print('CLI smoke passed: defaults, passthrough, exit codes, timer, shell, concurrent ports, stop isolation, web shutdown, colors, config, skills, nesting, upstream routing')
     finally:
         for process in processes:
             if process.poll() is None:

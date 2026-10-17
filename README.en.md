@@ -138,6 +138,26 @@ netinspect --open-browser=false --port 0 -- curl -I https://example.com
 netinspect --help
 ```
 
+For a shorter shell command, add `alias ni=netinspect` to `~/.bashrc` or `~/.zshrc`:
+
+```sh
+alias ni=netinspect
+ni curl -I https://example.com
+```
+
+CLI help and diagnostics are English. Help headings use color in a terminal;
+redirected output, `NO_COLOR` and `TERM=dumb` disable ANSI colors.
+
+Agent workflows are bundled in the installed binary, following the
+[agent-browser skills interface](https://github.com/vercel-labs/agent-browser/blob/main/docs/src/app/skills/page.mdx):
+
+```sh
+netinspect skills list
+netinspect skills get core
+netinspect skills get core --full
+```
+
+
 </details>
 
 <details id="22-open-the-dashboard">
@@ -151,7 +171,9 @@ Open the dashboard URL printed in the terminal. The default address is `127.0.0.
 - Click a record for process, destination, timing, traffic, TLS, or DNS details. Available fields depend on the mode.
 - Pausing the dashboard only pauses page updates; monitoring and recording continue.
 
-Each run has its own session, dashboard port, and stop token. Multiple commands can be monitored concurrently.
+Each run has its own session, dashboard port, and stop token. Multiple commands can be monitored concurrently. Nested netinspect capture is rejected, including through shell wrappers.
+
+The dashboard supports English, Simplified Chinese, Spanish, French, German, Japanese and Portuguese. It uses browser language preferences initially; the language selector saves your choice in a cookie for one year.
 
 </details>
 
@@ -187,7 +209,7 @@ Configuration is loaded in this order, with later values taking precedence:
 2. `.netinspect.json` in the current directory.
 3. Command-line options.
 
-Create configuration files manually. All fields are optional. Example `.netinspect.json`:
+`netinspect init-config` creates the default user configuration without overwriting existing files. `netinspect --help` shows the absolute user/local configuration paths and whether each file exists. All fields are optional. Example `.netinspect.json`:
 
 ```json
 {
@@ -209,6 +231,30 @@ netinspect --memory-mb 64 -- python app.py
 `memory_mb` is a **record storage budget**, not a total process memory limit. Proxy buffers and the Go runtime use additional memory. Each record reserves a conservative 8 KiB, allowing up to 16,384 records by default. At the limit, new records are rejected without evicting history. Existing connections continue to update, and the proxy and target keep running.
 
 </details>
+
+### Upstream proxy
+
+Route captured TCP connections through an explicit proxy:
+
+```sh
+netinspect --upstream-proxy http://127.0.0.1:3128 -- curl -I https://example.com
+netinspect --upstream-proxy socks5h://127.0.0.1:1080 -- curl -I https://example.com
+```
+
+Set `"upstream_proxy": "http://127.0.0.1:3128"` in JSON for a default.
+Supported schemes are `http`, `https`, `socks5`, and `socks5h`; URL credentials
+(`scheme://user:password@host:port`) enable HTTP Basic or SOCKS5 username/password
+authentication. HTTPS proxies use system certificate trust. Route metadata and
+startup diagnostics omit credentials. Upstream failure never falls back to direct.
+
+This applies to TCP in preload, ptrace and netns. Observe rejects the option.
+DNS/UDP are not tunneled. `socks5` resolves names locally; `socks5h` and HTTP(S)
+pass destination names to the proxy when available. If the application already
+resolved a name before interception, the upstream receives that IP.
+The proxy must be reachable inside netns; host loopback is a different network.
+Ambient proxy environment variables are not used to select this upstream, and
+application-level proxy settings remain in effect (possibly creating a chain).
+
 
 ## 3. Mode comparison
 
@@ -253,6 +299,7 @@ When launched through sudo, the monitor creates the namespace as root and runs t
 make -C modes/preload
 go test ./...
 go vet ./...
+node scripts/test-i18n.cjs # Node.js 18+
 sh scripts/build.sh -o /tmp/netinspect
 python3 scripts/cli-smoke.py /tmp/netinspect
 ```

@@ -46,6 +46,7 @@ jobs:
         run: |
           go test ./...
           go vet ./...
+          node scripts/test-i18n.cjs
 
       - name: Build and check binary
         shell: bash

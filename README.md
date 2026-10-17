@@ -138,6 +138,18 @@ netinspect --open-browser=false --port 0 -- curl -I https://example.com
 netinspect --help
 ```
 
+可将 `alias ni=netinspect` 加入 `~/.bashrc` 或 `~/.zshrc`，然后使用 `ni curl -I https://example.com`。
+CLI 帮助和诊断统一为英文；终端中帮助标题带颜色，重定向、`NO_COLOR` 或 `TERM=dumb` 时不输出 ANSI 颜色。
+
+Agent 指导内嵌在当前版本的 binary 中，接口参考 [agent-browser skills](https://github.com/vercel-labs/agent-browser/blob/main/docs/src/app/skills/page.mdx)：
+
+```sh
+netinspect skills list
+netinspect skills get core
+netinspect skills get core --full
+```
+
+
 </details>
 
 <details id="22-查看面板">
@@ -151,7 +163,9 @@ netinspect --help
 - 点击记录查看进程、目标、耗时、流量、TLS 或 DNS 详情；字段可见性取决于监控模式。
 - 暂停按钮只暂停页面刷新，后台监控和记录继续运行。
 
-每次运行都有独立会话、面板端口和停止令牌，可以同时监控多个命令。
+每次运行都有独立会话、面板端口和停止令牌，可以同时监控多个命令。禁止嵌套运行 netinspect 采集，Shell 套壳也会进行检测。
+
+面板支持英语、简体中文、西班牙语、法语、德语、日语和葡萄牙语，首次根据浏览器语言偏好选择；切换语言后通过 cookie 保存一年。
 
 </details>
 
@@ -187,7 +201,7 @@ netinspect stop --url http://127.0.0.1:17890 --token TOKEN_FROM_TERMINAL
 2. 当前目录 `.netinspect.json`。
 3. 命令行选项。
 
-配置文件需手动创建，所有字段均可省略。示例 `.netinspect.json`：
+`netinspect init-config` 创建默认用户级配置，不覆盖已有文件。`netinspect --help` 显示用户和当前目录配置的绝对路径与存在状态。所有字段均可省略。示例 `.netinspect.json`：
 
 ```json
 {
@@ -209,6 +223,22 @@ netinspect --memory-mb 64 -- python app.py
 `memory_mb` 是**记录存储预算**，不是进程总内存上限；代理缓冲区和 Go 运行时另外占用内存。每条记录保守预留 8 KiB，默认最多保留 16,384 条。达到预算后停止新增记录，不淘汰已有历史；已有连接继续更新，代理和目标程序继续运行。
 
 </details>
+
+### 上游代理
+
+```sh
+netinspect --upstream-proxy http://127.0.0.1:3128 -- curl -I https://example.com
+netinspect --upstream-proxy socks5h://127.0.0.1:1080 -- curl -I https://example.com
+```
+
+JSON 配置可设置 `"upstream_proxy": "http://127.0.0.1:3128"`。
+支持 `http`、`https`、`socks5`、`socks5h`，以及 URL 中的 `user:password@` 认证（HTTP Basic / SOCKS5 用户名密码）；HTTPS 代理使用系统信任的证书。路由记录和启动提示不包含认证信息，上游失败不会回退为直连。
+
+此功能代理 preload、ptrace、netns 的 TCP，observe 模式会拒绝该选项；DNS/UDP 不走隧道。
+`socks5` 本地解析域名，`socks5h` 和 HTTP(S) 将可用的目标域名交给代理；应用在拦截前已经完成解析时，代理仍会收到 IP。
+netns 内必须能访问上游地址，不能直接将宿主机回环地址当作命名空间内地址使用。
+此选项不会读取环境代理变量来自动选择上游，也不会移除目标应用自己的代理配置，因此可能形成代理链。
+
 
 ## 3. 模式对比
 
@@ -253,6 +283,7 @@ sudo "$HOME/.local/bin/netinspect" --mode netns --user alice -- python app.py
 make -C modes/preload
 go test ./...
 go vet ./...
+node scripts/test-i18n.cjs # Node.js 18+
 sh scripts/build.sh -o /tmp/netinspect
 python3 scripts/cli-smoke.py /tmp/netinspect
 ```
