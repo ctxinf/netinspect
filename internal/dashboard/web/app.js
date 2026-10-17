@@ -67,6 +67,7 @@ function renderSession(s) {
   $('command').textContent = s.command || '—';
   $('command').title = s.command || '';
   const ended = (+s.ended_at || 0) > 0;
+  $('stop-server').disabled = !ended;
   const st = $('status');
   st.textContent = ended ? '已结束' : '运行中';
   st.className = 'status ' + (ended ? 'ended' : 'running');
@@ -80,6 +81,7 @@ function renderStats() {
   $('st-dns').textContent = s.dns;
 }
 async function loadSession() {
+  if (serverStopped) return;
   try {
     const r = await fetch('/api/session');
     if (!r.ok) throw new Error(r.status);
@@ -292,17 +294,41 @@ function connectWS() {
     }
     // 未知 type 直接忽略
   };
-  const down = () => { setWS(false); scheduleReconnect(); };
+  const down = () => { if (!serverStopped) { setWS(false); scheduleReconnect(); } };
   ws.onclose = down;
   ws.onerror = down;
 }
 function scheduleReconnect() {
+  if (serverStopped) return;
   clearTimeout(state.wsTimer);
   state.wsTimer = setTimeout(connectWS, 3000);
 }
 
 /* ---------- init ---------- */
+let serverStopped = false;
+async function stopServer() {
+  const button = $('stop-server');
+  button.disabled = true;
+  try {
+    const control = await fetch('/api/control', { headers: { 'X-Netinspect-Control': '1' } });
+    if (!control.ok) throw new Error('无法获取面板控制权限');
+    const { token } = await control.json();
+    const response = await fetch('/api/shutdown', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+    if (!response.ok) throw new Error('关闭失败：目标程序可能仍在运行');
+    serverStopped = true;
+    clearTimeout(state.wsTimer);
+    if (state.ws) state.ws.close();
+    $('ws-text').textContent = 'Server 已关闭';
+    $('ws-dot').classList.remove('on');
+    button.textContent = 'Server 已关闭';
+  } catch (e) {
+    button.disabled = false;
+    button.textContent = '重试关闭';
+    button.title = e.message;
+  }
+}
 function init() {
+  $('stop-server').addEventListener('click', stopServer);
   document.querySelectorAll('.tabs button').forEach((b) =>
     b.addEventListener('click', () => switchTab(b.dataset.tab)));
   $('filter').addEventListener('input', onFilterInput);

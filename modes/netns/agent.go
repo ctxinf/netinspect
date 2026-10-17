@@ -13,7 +13,7 @@ import (
 
 // RunAgent starts the proxy core (transparent frontend), the dashboard and
 // the DNS forwarder inside the network namespace. It runs until killed.
-func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS string) error {
+func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS, token string) error {
 	st := store.New(store.Session{
 		ID:        sid,
 		StartedAt: time.Now().UnixMilli(),
@@ -43,6 +43,7 @@ func RunAgent(sid, command string, proxyPort, dashPort int, nsIP, upstreamDNS st
 
 	// dashboard on loopback and on the ns IP (reachable from host)
 	dash := dashboard.New(st, hub)
+	dash.ConfigureControl(token, nil, func() { px.Close(); st.EndSession() })
 	dashURL := fmt.Sprintf("http://%s:%d", nsIP, dashPort)
 	st.SetDashboardURL(dashURL)
 	for _, addr := range []string{fmt.Sprintf("127.0.0.1:%d", dashPort), fmt.Sprintf("%s:%d", nsIP, dashPort)} {

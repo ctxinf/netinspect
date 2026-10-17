@@ -10,18 +10,19 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 )
 
 // NetNS describes a prepared network namespace.
 type NetNS struct {
-	Name       string // ni-<sid>
-	VethH      string
-	VethN      string
-	Subnet     string // 10.200.X.0/24
-	HostIP     string // 10.200.X.1
-	NSIP       string // 10.200.X.2
-	ProxyPort  int
-	DashPort   int
+	Name        string // ni-<sid>
+	VethH       string
+	VethN       string
+	Subnet      string // 10.200.X.0/24
+	HostIP      string // 10.200.X.1
+	NSIP        string // 10.200.X.2
+	ProxyPort   int
+	DashPort    int
 	UpstreamDNS string // host DNS server reachable from inside the ns
 
 	cleanups []func()
@@ -43,6 +44,19 @@ func (n *NetNS) fail(err error) (*NetNS, error) {
 
 // Setup creates ni-<sid> with a veth pair, NAT, and TCP REDIRECT to proxyPort.
 func Setup(sid string, proxyPort, dashPort int) (*NetNS, error) {
+	// Serialize subnet allocation across simultaneous netinspect instances.
+	if err := os.MkdirAll("/run/lock", 0755); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile("/run/lock/netinspect-netns.lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return nil, err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	n := &NetNS{Name: "ni-" + sid, ProxyPort: proxyPort, DashPort: dashPort}
 	x, err := freeOctet()
 	if err != nil {
@@ -67,12 +81,18 @@ func Setup(sid string, proxyPort, dashPort int) (*NetNS, error) {
 		func() error { return inNS("ip", "addr", "add", n.NSIP+"/24", "dev", n.VethN) },
 		func() error { return inNS("ip", "link", "set", n.VethN, "up") },
 		func() error { return inNS("ip", "route", "add", "default", "via", n.HostIP) },
-		func() error { return inNS("iptables", "-t", "nat", "-A", "OUTPUT",
-			"-p", "tcp", "-m", "mark", "--mark", "0x1", "-j", "ACCEPT") },
-		func() error { return inNS("iptables", "-t", "nat", "-A", "OUTPUT",
-			"-p", "tcp", "-j", "REDIRECT", "--to-ports", fmt.Sprint(proxyPort)) },
-		func() error { return run("iptables", "-t", "nat", "-A", "POSTROUTING",
-			"-s", n.Subnet, "-j", "MASQUERADE") },
+		func() error {
+			return inNS("iptables", "-t", "nat", "-A", "OUTPUT",
+				"-p", "tcp", "-m", "mark", "--mark", "0x1", "-j", "ACCEPT")
+		},
+		func() error {
+			return inNS("iptables", "-t", "nat", "-A", "OUTPUT",
+				"-p", "tcp", "-j", "REDIRECT", "--to-ports", fmt.Sprint(proxyPort))
+		},
+		func() error {
+			return run("iptables", "-t", "nat", "-A", "POSTROUTING",
+				"-s", n.Subnet, "-j", "MASQUERADE")
+		},
 		func() error { return run("iptables", "-A", "FORWARD", "-s", n.Subnet, "-j", "ACCEPT") },
 		func() error { return run("iptables", "-A", "FORWARD", "-d", n.Subnet, "-j", "ACCEPT") },
 	}

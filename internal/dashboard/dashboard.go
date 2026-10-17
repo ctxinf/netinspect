@@ -4,6 +4,7 @@
 package dashboard
 
 import (
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"net"
@@ -58,14 +59,22 @@ func (h *Hub) Unsubscribe(ch chan proxy.Event) {
 
 // Server is the dashboard HTTP server.
 type Server struct {
-	store *store.Store
-	hub   *Hub
-	mux   *http.ServeMux
+	store        *store.Store
+	hub          *Hub
+	mux          *http.ServeMux
+	controlToken string
+	stop         func()
+	end          func()
+	data         http.Handler
+	dataMu       sync.RWMutex
 }
 
 // New creates a dashboard server.
 func New(st *store.Store, hub *Hub) *Server {
 	d := &Server{store: st, hub: hub, mux: http.NewServeMux()}
+	d.mux.HandleFunc("/api/shutdown", d.handleShutdown)
+	d.mux.HandleFunc("/api/control", d.handleControl)
+	d.mux.HandleFunc("/api/end", d.handleEnd)
 	d.mux.HandleFunc("/api/session", d.handleSession)
 	d.mux.HandleFunc("/api/connections", d.handleConnections)
 	d.mux.HandleFunc("/api/dns", d.handleDNS)
@@ -76,11 +85,79 @@ func New(st *store.Store, hub *Hub) *Server {
 
 // Serve runs the dashboard on ln.
 func (d *Server) Serve(ln net.Listener) error {
-	return http.Serve(ln, d.mux)
+	return http.Serve(ln, d.Handler())
 }
 
 // Handler exposes the mux for embedding in other servers.
-func (d *Server) Handler() http.Handler { return d.mux }
+func (d *Server) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		d.dataMu.RLock()
+		data := d.data
+		d.dataMu.RUnlock()
+		if data != nil && (r.URL.Path == "/api/session" || r.URL.Path == "/api/connections" || r.URL.Path == "/api/dns" || r.URL.Path == "/api/ws") {
+			data.ServeHTTP(w, r)
+			return
+		}
+		d.mux.ServeHTTP(w, r)
+	})
+}
+
+// ConfigureControl must be called before Serve. Stop is allowed after the target ends.
+func (d *Server) ConfigureControl(token string, stop, end func()) {
+	d.controlToken = token
+	d.stop = stop
+	d.end = end
+}
+func (d *Server) SetDataHandler(h http.Handler) { d.dataMu.Lock(); defer d.dataMu.Unlock(); d.data = h }
+func (d *Server) handleControl(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Header.Get("X-Netinspect-Control") != "1" {
+		http.Error(w, "control header required", 403)
+		return
+	}
+	writeJSON(w, map[string]any{"token": d.controlToken, "available": d.stop != nil})
+}
+func (d *Server) authorized(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "POST required", 405)
+		return false
+	}
+	if d.controlToken == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+d.controlToken)) != 1 {
+		http.Error(w, "unauthorized", 403)
+		return false
+	}
+	return true
+}
+func (d *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if !d.authorized(w, r) {
+		return
+	}
+	if d.stop == nil {
+		http.Error(w, "unavailable", 409)
+		return
+	}
+	if d.store.Session().EndedAt == 0 {
+		http.Error(w, "target still running", 409)
+		return
+	}
+	writeJSON(w, map[string]bool{"stopped": true})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	d.stop()
+}
+func (d *Server) handleEnd(w http.ResponseWriter, r *http.Request) {
+	if !d.authorized(w, r) {
+		return
+	}
+	if d.end == nil {
+		http.Error(w, "unavailable", 409)
+		return
+	}
+	d.end()
+	writeJSON(w, map[string]bool{"ended": true})
+}
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

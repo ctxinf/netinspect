@@ -1,98 +1,95 @@
-// netinspect: per-process network connection inspector for Linux.
-// Phase 1: connection-level metadata only. No MITM, no content capture,
-// in-memory storage (records vanish when the process exits).
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"strings"
+	"os/exec"
+	"syscall"
 
 	"netinspect/internal/session"
 	"netinspect/modes/netns"
 )
 
-const usage = `netinspect - Linux 进程级网络连接监控 (Phase 1: 纯连接级元数据)
+const usage = `netinspect · Linux 进程网络监控
 
-用法:
-  netinspect -- <command> [args...]                                  最简: 默认 observe 模式
-  netinspect run --mode <preload|ptrace|netns|observe> [--listen 127.0.0.1:17890] -- <command> [args...]
+用法
+  netinspect
+  netinspect 命令 [参数...]                    全默认快捷形式
+  netinspect [选项] -- 命令 [参数...]
+  netinspect run [选项] -- 命令 [参数...]
+  netinspect stop --url URL --token TOKEN
 
-模式 (run 必须手动指定; 裸 -- 形式默认 observe):
-  preload  LD_PRELOAD 拦截 connect, 走 SOCKS5 本地代理 (动态链接程序)
-  ptrace   ptrace 改写 connect syscall (静态链接/Go 程序也可用, 仅 x86_64)
-  netns    目标跑进独立 netns, iptables REDIRECT + DNS 转发记录 (需 root)
-  observe  不拦截, 仅 /proc 轮询观察 TCP 连接元数据 (默认, 零侵入)
+默认启动交互 Shell，使用 preload 模式。只有无子命令、无选项的快捷形式可省略 --。
+使用 run 或选项并指定目标命令时，必须通过 -- 分隔。目标参数原样传递。
 
-说明:
-  - 只记录连接元数据: 五元组/进程/耗时/流量/结果/SNI/ALPN/DNS 查询, 不解密不看内容
-  - 纯内存存储, 进程退出记录即丢弃
-  - dashboard 在目标运行期间实时展示: http://<listen>
+选项
+  --mode MODE       preload（默认）| ptrace | netns | observe
+  --listen ADDRESS  面板地址（默认 127.0.0.1:17890），占用时端口递增
+  --port PORT       覆盖面板端口
+  --keep-alive TIME 命令结束后面板保留时间（默认 30m，0 表示立即关闭）
+  --config FILE     显式指定 JSON 配置文件
+  -h, --help        显示帮助
+
+示例
+  netinspect
+  netinspect curl -I https://example.com
+  netinspect --mode observe --keep-alive 10m -- python app.py
+  netinspect run -- ./my-command --help
+
+配置
+  $XDG_CONFIG_HOME/netinspect/config.json（默认 ~/.config/netinspect/config.json）
+  当前目录 .netinspect.json；--config 替代自动发现。命令行优先。
+  {"mode":"preload","listen":"127.0.0.1:17890","keep_alive":"30m"}
+
+仅记录连接元数据，不解密内容。数据保留至面板关闭。
 `
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+	args := os.Args[1:]
+	var err error
+	if len(args) > 0 {
+		switch args[0] {
+		case "help", "-h", "--help":
+			fmt.Print(usage)
+			return
+		case "__agent":
+			err = agentCmd(args[1:])
+		case "stop":
+			err = stopCmd(args[1:])
+		default:
+			err = runCmd(args, "preload")
+		}
+	} else {
+		err = runCmd(args, "preload")
 	}
-	// shorthand: netinspect -- <command>  (default mode: observe, zero intrusion)
-	// flags are also accepted: netinspect --mode ptrace -- <command>
-	a1 := os.Args[1]
-	if a1 == "--" || (strings.HasPrefix(a1, "-") && a1 != "-h" && a1 != "--help") {
-		args := os.Args[2:]
-		if a1 != "--" {
-			args = os.Args[1:]
-		}
-		if err := runCmd(args, "observe"); err != nil {
-			fmt.Fprintf(os.Stderr, "[netinspect] error: %v\n", err)
-			os.Exit(1)
-		}
+	if errors.Is(err, flag.ErrHelp) {
 		return
 	}
-	switch os.Args[1] {
-	case "run":
-		if err := runCmd(os.Args[2:], ""); err != nil {
-			fmt.Fprintf(os.Stderr, "[netinspect] error: %v\n", err)
-			os.Exit(1)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n  ✕ netinspect: %v\n", err)
+		var e *exec.ExitError
+		if errors.As(err, &e) {
+			code := e.ExitCode()
+			if ws, ok := e.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+				code = 128 + int(ws.Signal())
+			}
+			os.Exit(code)
 		}
-	case "__agent":
-		if err := agentCmd(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "[netinspect] agent error: %v\n", err)
-			os.Exit(1)
+		if e, ok := err.(interface{ ExitCode() int }); ok {
+			os.Exit(e.ExitCode())
 		}
-	case "-h", "--help", "help":
-		fmt.Print(usage)
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", os.Args[1], usage)
-		os.Exit(2)
+		os.Exit(1)
 	}
 }
 
 func runCmd(args []string, defaultMode string) error {
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	mode := fs.String("mode", defaultMode, "interception mode: preload|ptrace|netns|observe")
-	listen := fs.String("listen", "127.0.0.1:17890", "dashboard listen address")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *mode == "" {
-		return fmt.Errorf("--mode is required (preload|ptrace|netns|observe)")
-	}
-	cmd := fs.Args()
-	if len(cmd) == 0 {
-		return fmt.Errorf("no command given; usage: netinspect run --mode %s -- <command> [args...]", *mode)
-	}
-	exe, err := os.Executable()
+	cfg, err := parseRun(args, defaultMode)
 	if err != nil {
 		return err
 	}
-	return session.Run(session.Config{
-		Mode:    strings.ToLower(*mode),
-		Listen:  *listen,
-		Command: cmd,
-		ExePath: exe,
-	})
+	return session.Run(cfg)
 }
 
 func agentCmd(args []string) error {
@@ -102,6 +99,7 @@ func agentCmd(args []string) error {
 	proxyPort := fs.Int("proxy-port", 0, "")
 	dashPort := fs.Int("dash-port", 0, "")
 	nsIP := fs.String("ns-ip", "", "")
+	token := fs.String("control-token", "", "")
 	upstreamDNS := fs.String("upstream-dns", "8.8.8.8", "")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -109,5 +107,5 @@ func agentCmd(args []string) error {
 	if *sid == "" || *proxyPort == 0 || *dashPort == 0 || *nsIP == "" {
 		return fmt.Errorf("__agent: missing required flags")
 	}
-	return netns.RunAgent(*sid, *command, *proxyPort, *dashPort, *nsIP, *upstreamDNS)
+	return netns.RunAgent(*sid, *command, *proxyPort, *dashPort, *nsIP, *upstreamDNS, *token)
 }

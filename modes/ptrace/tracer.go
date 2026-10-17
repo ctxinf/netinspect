@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
@@ -63,6 +64,24 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 		return fmt.Errorf("forkexec: %w", err)
 	}
 
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case sig := <-signals:
+				if sig, ok := sig.(syscall.Signal); ok {
+					_ = syscall.Kill(pid, sig)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	var exitErr error
 	options := unix.PTRACE_O_TRACESYSGOOD |
 		unix.PTRACE_O_TRACEFORK |
 		unix.PTRACE_O_TRACECLONE |
@@ -75,7 +94,7 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 		wpid, err := unix.Wait4(-1, &ws, unix.WALL, nil)
 		if err != nil {
 			if err == unix.ECHILD {
-				return nil
+				return exitErr
 			}
 			continue
 		}
@@ -89,6 +108,15 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 
 		switch {
 		case ws.Exited() || ws.Signaled():
+			if wpid == pid {
+				code := ws.ExitStatus()
+				if ws.Signaled() {
+					code = 128 + int(ws.Signal())
+				}
+				if code != 0 {
+					exitErr = &ExitError{Code: code}
+				}
+			}
 			delete(states, wpid)
 			continue
 		case ws.Stopped():
@@ -131,8 +159,14 @@ func Run(cmd string, args []string, sockPath string, proxyPort, dashPort int) er
 			}
 		}
 	}
-	return nil
+	return exitErr
 }
+
+// ExitError preserves the traced root process exit code.
+type ExitError struct{ Code int }
+
+func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code) }
+func (e *ExitError) ExitCode() int { return e.Code }
 
 // handleEnter inspects a connect() syscall entry and rewrites the destination
 // to the proxy when appropriate.

@@ -81,8 +81,8 @@ func TestServeDNS(t *testing.T) {
 	host, port, _ := net.SplitHostPort(upstream)
 
 	st := store.New(store.Session{ID: "test", Mode: "netns"})
-	var emitted []proxy.Event
-	emit := func(e proxy.Event) { emitted = append(emitted, e) }
+	emitted := make(chan proxy.Event, 4)
+	emit := func(e proxy.Event) { emitted <- e }
 
 	ln, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -133,8 +133,13 @@ func TestServeDNS(t *testing.T) {
 	if qs[0].QName != "example.com" || qs[0].QType != "A" || qs[0].Answer != "1.2.3.4" {
 		t.Fatalf("bad dns record: %+v", qs[0])
 	}
-	if len(emitted) != 1 || emitted[0].Type != "dns" {
-		t.Fatalf("want 1 dns event, got %+v", emitted)
+	select {
+	case event := <-emitted:
+		if event.Type != "dns" {
+			t.Fatalf("want dns event, got %+v", event)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("DNS event not emitted")
 	}
 	t.Logf("DNS forwarder ok: %+v", qs[0])
 }
