@@ -167,3 +167,32 @@ func TestNetnsTargetUserOption(t *testing.T) {
 		t.Fatalf("file user: %+v %v", cfg, err)
 	}
 }
+
+func TestInitConfig(t *testing.T) {
+	cleanConfig(t)
+	if err := initConfigCmd(nil); err != nil {
+		t.Fatal(err)
+	}
+	path, err := userConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := initConfigCmd(nil); err == nil {
+		t.Fatal("overwrote existing config")
+	}
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Fatal("config changed")
+	}
+	cfg, err := parseRun([]string{"true"}, "preload")
+	if err != nil || cfg.Mode != "preload" || cfg.MemoryMB != 128 {
+		t.Fatalf("%+v %v", cfg, err)
+	}
+	if configStatus(path) != "exists" || configStatus(path+".missing") != "missing" {
+		t.Fatal("incorrect status")
+	}
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -19,6 +20,7 @@ Usage:
 Commands:
   run                 Run and monitor a command (default)
   stop                Shut down a running dashboard
+  init-config         Create default user configuration
   version             Print version information
   help                Print this help
 
@@ -65,4 +67,67 @@ func printHelp() {
 		}
 	}
 	fmt.Print(text)
+	if path, err := userConfigPath(); err == nil {
+		fmt.Printf("\nUser config: %s [%s]\n", path, configStatus(path))
+	}
+	if path, err := filepath.Abs(".netinspect.json"); err == nil {
+		fmt.Printf("Local config: %s [%s]\n", path, configStatus(path))
+	}
+}
+
+func userConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "netinspect", "config.json"), nil
+}
+
+func configStatus(path string) string {
+	_, err := os.Stat(path)
+	if err == nil {
+		return "exists"
+	}
+	if os.IsNotExist(err) {
+		return "missing"
+	}
+	return "unavailable: " + err.Error()
+}
+
+func initConfigCmd(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("Usage: netinspect init-config\n\nCreate the default user configuration. Existing files are never overwritten.")
+		return nil
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("usage: netinspect init-config")
+	}
+	path, err := userConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return fmt.Errorf("create config %s: %w", path, err)
+	}
+	_, writeErr := f.WriteString(`{
+  "mode": "preload",
+  "listen": "127.0.0.1:17890",
+  "keep_alive": "30m",
+  "open_browser": true,
+  "memory_mb": 128
+}
+`)
+	closeErr := f.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	fmt.Printf("Created configuration: %s\n", path)
+	return nil
 }
