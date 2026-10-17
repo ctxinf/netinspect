@@ -62,6 +62,20 @@ func newSID() string {
 
 // Run executes one session.
 func Run(cfg Config) error {
+	if err := checkNesting(); err != nil {
+		return err
+	}
+	previous, hadPrevious := os.LookupEnv(activeSessionEnv)
+	if err := os.Setenv(activeSessionEnv, strconv.Itoa(os.Getpid())); err != nil {
+		return err
+	}
+	defer func() {
+		if hadPrevious {
+			_ = os.Setenv(activeSessionEnv, previous)
+		} else {
+			_ = os.Unsetenv(activeSessionEnv)
+		}
+	}()
 	if !validModes[cfg.Mode] {
 		return fmt.Errorf("invalid --mode %q: must be one of preload|ptrace|netns|observe", cfg.Mode)
 	}
