@@ -110,6 +110,12 @@ a {
   font-weight: 750;
   letter-spacing: -0.7px;
 }
+.brand-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
 .brand-dot {
   color: var(--text);
 }

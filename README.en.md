@@ -1,4 +1,5 @@
-<h1 align="center">◉ netinspect</h1>
+<p align="center"><img src="assets/favicon.png" width="96" height="96" alt="netinspect icon" /></p>
+<h1 align="center">netinspect</h1>
 <p align="center"><a href="README.md">中文</a> · English</p>
 
 <p align="center">Process-level network monitoring for Linux command-line programs. Inspect the connections from a single run in your browser.</p>

@@ -1,4 +1,5 @@
-<h1 align="center">◉ netinspect</h1>
+<p align="center"><img src="assets/favicon.png" width="96" height="96" alt="netinspect icon" /></p>
+<h1 align="center">netinspect</h1>
 <p align="center">中文 · <a href="README.en.md">English</a></p>
 
 <p align="center">面向 Linux 命令行程序的进程级网络监控工具，在浏览器里查看一次运行的网络连接。</p>

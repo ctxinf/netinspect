@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"netinspect"
 	"netinspect/internal/proxy"
 	"netinspect/internal/store"
 	"netinspect/internal/version"
@@ -203,6 +204,11 @@ func (d *Server) handleDNS(w http.ResponseWriter, r *http.Request) {
 
 func (d *Server) handleUI(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
+	if p == "/favicon.png" {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(netinspect.Favicon)
+		return
+	}
 	if p == "/" {
 		p = "/index.html"
 	}
