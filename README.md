@@ -87,7 +87,7 @@ Build `modes/preload/libnetinspect.so` before compiling Go so it can be embedded
 ## Four modes
 
 | Mode | Compatibility | Best suited for | DNS queries | Requirements and limits |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | `preload` (default) | ⭐⭐ | Dynamically linked command-line programs | No | Usually no root required; ineffective for static binaries; the library must match the target's architecture and libc and meet its required glibc version |
 | `ptrace` | ⭐⭐⭐ | Static / Go executables | No | Linux x86_64 only; system policy must permit ptrace |
 | `netns` | ⭐⭐⭐⭐ | TCP and DNS monitoring together | Yes | Requires root, namespace, and iptables permissions |
