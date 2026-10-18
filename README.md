@@ -6,25 +6,6 @@
 
 <image src="assets/demo.gif"/>
 
-- Wrap and launch a command directly from the CLI.
-- A Web dashboard similar to MetacubeX and Zashboard.
-- Choose from four modes based on the target program and available permissions: `preload`, `ptrace`, `netns`, and `observe`.
-
-**Use cases:**
-- Inspect a program's network connections.
-- Combine **CLI launch + Web inspection** to simplify analysis that would otherwise require manual tcpdump, packet capture, or MITM setup.
-
-**What is not included:**
-- Linux only; no Windows or macOS version.
-- No automatic mode selection; choose a mode explicitly.
-- No persistence; records stay in memory and are released on shutdown.
-- No MITM, TLS decryption, or storage of request/response bodies.
-- No nested use with `proxychains4` or `graftcp`.
-
-**Limitations:**
-1. Many nonstandard binaries cannot be used directly.
-2. Some architectures cannot be fully analyzed, such as client/daemon-server setups.
-
 ## Usage
 
 ```sh
@@ -49,25 +30,23 @@ netinspect skills get core --full
 
 ## Installation
 
-### 1.1 Install script
+### 1. Install script
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
 ```
 
-### 1.2 Homebrew
+### 2. Homebrew
 
 ```sh
 brew install ctxinf/tap/netinspect
 ```
 
-Homebrew selects the glibc package for Intel or ARM Linux automatically. For musl systems such as Alpine, use the install script.
+### 3. Manual download
 
-### 1.3 Manual download
+[https://github.com/ctxinf/netinspect/releases/latest](https://github.com/ctxinf/netinspect/releases/latest).
 
-Download the archive matching your architecture and libc from [Releases](https://github.com/ctxinf/netinspect/releases/latest).
-
-### 1.4 Build from source
+### 4. Build from source
 
 Requires Linux, Go **1.27.2 or newer**, a C compiler, and `make`. Build with:
 
@@ -83,6 +62,27 @@ netinspect --version
 ```
 
 Build `modes/preload/libnetinspect.so` before compiling Go so it can be embedded in the binary. `scripts/build.sh` injects the nearest tag and current commit for the CLI and dashboard version information.
+
+## Features
+
+- Wrap and launch a command directly from the CLI.
+- A Web dashboard similar to MetacubeX and Zashboard.
+- Choose from four modes based on the target program and available permissions: `preload`, `ptrace`, `netns`, and `observe`.
+
+**Use cases:**
+- Inspect a program's network connections.
+- Combine **CLI launch + Web inspection** to simplify analysis that would otherwise require manual tcpdump, packet capture, or MITM setup.
+
+**What is not included:**
+- Linux only; no Windows or macOS version.
+- No automatic mode selection; choose a mode explicitly.
+- No persistence; records stay in memory and are released on shutdown.
+- No MITM, TLS decryption, or storage of request/response bodies.
+- No nested use with `proxychains4` or `graftcp`.
+
+**Limitations:**
+1. Many nonstandard binaries cannot be used directly.
+2. Some architectures cannot be fully analyzed, such as client/daemon-server setups.
 
 ## Four modes
 

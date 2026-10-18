@@ -6,26 +6,6 @@
 
 <image src="assets/demo.gif"/>
 
-- CLI一键快速包裹启动
-- 类似 MetacubeX, Zashboard 一样的web面板。
-- 提供 `preload`、`ptrace`、`netns`、`observe` 四种模式，按目标程序和权限选择。
-
-**使用场景**:
-- 查看某个程序的网络连接
-- 通过一键**CLI运行+web面板查看**方便分析过程, 代替手工tcpdump, 手工抓包, 手工mitm.
-
-
-**没有什么:**
-- 仅linux版本, 没有window, macos版
-- 没有自动模式, 必须手动选择和制定模式
-- 不持久化, 记录只保存在内存中, 关闭后释放数据。
-- 不做 MITM、不解密 TLS、不保存请求或响应正文。
-- 不支持嵌套`proxychains4`, `graftcp` 使用。
-
-**劣势缺陷:**
-1. 很多非标准binary程序无法直接使用
-2. 很多架构无法完整分析, 比如 Client/Daemon-Server 模式
-
 ## 使用说明
 
 ```sh
@@ -50,25 +30,23 @@ netinspect skills get core --full
 
 ## 安装
 
-### 1.1 通过脚本安装
+### 1. 通过脚本安装
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
 ```
 
-### 1.2 Homebrew
+### 2. Homebrew
 
 ```sh
 brew install ctxinf/tap/netinspect
 ```
 
-Homebrew 自动为 Intel 或 ARM Linux 选择 glibc 包；Alpine 等 musl 系统请使用安装脚本。
+### 3. 直接下载安装
 
-### 1.3 直接下载安装
+[https://github.com/ctxinf/netinspect/releases/latest](https://github.com/ctxinf/netinspect/releases/latest)。
 
-从 [Releases](https://github.com/ctxinf/netinspect/releases/latest) 下载匹配架构与 libc 的压缩包。
-
-### 1.4 从源码安装
+### 4. 从源码安装
 
 需要 Linux、Go **1.27.2 或更新版本**、C 编译器和 `make`。构建命令：
 
@@ -84,6 +62,28 @@ netinspect --version
 ```
 
 必须先构建 `modes/preload/libnetinspect.so`，Go 编译时会将它嵌入 binary。`scripts/build.sh` 写入最近的 tag 和当前 commit，CLI 与面板会显示对应版本信息。
+
+## 功能
+
+- CLI一键快速包裹启动
+- 类似 MetacubeX, Zashboard 一样的web面板。
+- 提供 `preload`、`ptrace`、`netns`、`observe` 四种模式，按目标程序和权限选择。
+
+**使用场景**:
+- 查看某个程序的网络连接
+- 通过一键**CLI运行+web面板查看**方便分析过程, 代替手工tcpdump, 手工抓包, 手工mitm.
+
+
+**没有什么:**
+- 仅linux版本, 没有window, macos版
+- 没有自动模式, 必须手动选择和制定模式
+- 不持久化, 记录只保存在内存中, 关闭后释放数据。
+- 不做 MITM、不解密 TLS、不保存请求或响应正文。
+- 不支持嵌套`proxychains4`, `graftcp` 使用。
+
+**劣势缺陷:**
+1. 很多非标准binary程序无法直接使用
+2. 很多架构无法完整分析, 比如 Client/Daemon-Server 模式
 
 ## 四种模式
 
