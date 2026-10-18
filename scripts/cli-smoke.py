@@ -3,6 +3,7 @@
 import json
 import os
 import pty
+import platform
 import socketserver
 import threading
 from pathlib import Path
@@ -16,6 +17,8 @@ import time
 import urllib.error
 import urllib.request
 
+ptrace_supported = platform.machine() in ('x86_64', 'amd64')
+capture_modes = ['preload', 'ptrace'] if ptrace_supported else ['preload']
 binary = str(Path(sys.argv[1]).resolve())
 http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 processes = []
@@ -118,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
         assert json.loads(config_path.read_text())['mode'] == 'preload'
         config_path.write_bytes(before)
         # Both inherited markers and /proc ancestry block nested capture.
-        for mode in ['preload', 'ptrace', 'observe']:
+        for mode in [*capture_modes, 'observe']:
             nested = run(['--mode', mode, '--keep-alive', '0', '--', binary,
                           '--keep-alive', '0', '--', 'true'])
             assert nested.returncode != 0 and 'nested netinspect' in nested.stderr, nested
@@ -186,11 +189,15 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
         assert active.poll() is None
         request(active_url, '/api/shutdown', active_token)
         assert active.wait(timeout=5) == 143
-        result = run(['--mode', 'ptrace', '--keep-alive', '0', '--', 'sh', '-c', 'exit 13'])
-        assert result.returncode == 13, result
-        result = run(['--mode', 'ptrace', '--keep-alive', '0', '--', sys.executable,
-                      '-c', 'import ctypes; ctypes.CDLL(None).ptrace(0, 0, 0, 0)'])
-        assert result.returncode == 0 and result.stderr.count('attempted nested ptrace') == 1, result
+        if not ptrace_supported:
+            result = run(['--mode', 'ptrace', '--keep-alive', '0', '--', 'true'])
+            assert result.returncode != 0 and 'ptrace mode only supports x86_64' in result.stderr, result
+        if ptrace_supported:
+            result = run(['--mode', 'ptrace', '--keep-alive', '0', '--', 'sh', '-c', 'exit 13'])
+            assert result.returncode == 13, result
+            result = run(['--mode', 'ptrace', '--keep-alive', '0', '--', sys.executable,
+                          '-c', 'import ctypes; ctypes.CDLL(None).ptrace(0, 0, 0, 0)'])
+            assert result.returncode == 0 and result.stderr.count('attempted nested ptrace') == 1, result
         result = run(['--keep-alive', '0', '--', 'sh', '-c',
                       'unset LD_PRELOAD; exec sleep 2.2'])
         assert result.returncode == 0 and result.stderr.count('target PID has not loaded libnetinspect.so') == 1, result
@@ -226,14 +233,14 @@ with tempfile.TemporaryDirectory(prefix='netinspect-cli-') as directory:
             thread = threading.Thread(target=proxy_server.serve_forever, daemon=True)
             thread.start()
             proxy_url = 'http://127.0.0.1:' + str(proxy_server.server_address[1])
-            for mode in ['preload', 'ptrace']:
+            for mode in capture_modes:
                 response = run(['--mode', mode, '--keep-alive', '0', '--upstream-proxy', proxy_url,
                                 '--', 'curl', '--silent', '--show-error', '--noproxy', '*',
                                 '--max-time', '4', 'http://127.0.0.2:54321/'])
                 assert response.returncode == 0 and response.stdout == 'upstream-routed', response
             proxy_server.shutdown()
             thread.join(timeout=5)
-        assert upstream_requests == ['CONNECT 127.0.0.2:54321 HTTP/1.1'] * 2, upstream_requests
+        assert upstream_requests == ['CONNECT 127.0.0.2:54321 HTTP/1.1'] * len(capture_modes), upstream_requests
 
         print('CLI smoke passed: defaults, passthrough, exit codes, timer, shell, concurrent ports, stop isolation, web shutdown, colors, config, skills, nesting, upstream routing')
     finally:

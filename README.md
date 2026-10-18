@@ -58,16 +58,18 @@ curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh |
 ### 1.2 Homebrew
 
 ```sh
-brew install ctxinf/homebrew-tap
+brew install ctxinf/tap/netinspect
 ```
+
+Homebrew selects the glibc package for Intel or ARM Linux automatically. For musl systems such as Alpine, use the install script.
 
 ### 1.3 Manual download
 
-Sign in to GitHub and download `netinspect_linux_amd64.tar.gz` from [Releases](https://github.com/ctxinf/netinspect/releases/latest).
+Download the archive matching your architecture and libc from [Releases](https://github.com/ctxinf/netinspect/releases/latest).
 
 ### 1.4 Build from source
 
-Requires Linux, Go **1.27.2 or newer**, a C compiler, and `make`. Configure access to the private repository through GitHub CLI or a Git credential helper first:
+Requires Linux, Go **1.27.2 or newer**, a C compiler, and `make`. Build with:
 
 ```sh
 git clone https://github.com/ctxinf/netinspect.git

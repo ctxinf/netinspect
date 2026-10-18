@@ -10,6 +10,10 @@ on:
         description: Existing release tag to build and publish
         required: true
         type: string
+      publish:
+        description: Publish release and update Homebrew (disable for build verification only)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,66 +23,125 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        libc: [glibc, musl]
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+            image_arch: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            image_arch: aarch64
+    runs-on: ${{ matrix.runner }}
     env:
       CGO_ENABLED: '0'
       GOOS: linux
-      GOARCH: amd64
+      GOARCH: ${{ matrix.arch }}
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.publish && inputs.tag || github.ref }}
           persist-credentials: false
-
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Build embedded preload library
-        run: make -C modes/preload
-
+      - name: Build preload against baseline libc
+        env:
+          LIBC: ${{ matrix.libc }}
+          IMAGE_ARCH: ${{ matrix.image_arch }}
+        run: |
+          if [ "$LIBC" = glibc ]; then
+            image="quay.io/pypa/manylinux2014_$IMAGE_ARCH"
+          else
+            image="quay.io/pypa/musllinux_1_2_$IMAGE_ARCH"
+          fi
+          echo "BUILD_IMAGE=$image" >> "$GITHUB_ENV"
+          docker run --rm -e LIBC -v "$PWD:/src" -w /src "$image" \
+            sh -c 'export PATH=/opt/python/cp311-cp311/bin:$PATH; make -C modes/preload clean all CC=gcc && python3 scripts/check-preload.py modes/preload/libnetinspect.so'
       - name: Test
         run: |
           go test ./...
           go vet ./...
           node scripts/test-i18n.cjs
-
-      - name: Build and check binary
-        shell: bash
+          python3 scripts/test-release.py
+      - name: Build and smoke test
         run: |
-          set -euo pipefail
           mkdir -p dist/package
           build_id="$(git rev-parse --short=12 HEAD)"
           go build -trimpath \
             -ldflags "-s -w -X=netinspect/internal/version.Tag=${RELEASE_TAG} -X=netinspect/internal/version.Build=${build_id}" \
             -o dist/package/netinspect ./cmd/netinspect
-          dist/package/netinspect --version
-          python3 scripts/cli-smoke.py "$PWD/dist/package/netinspect"
-
+          docker run --rm --cap-add SYS_PTRACE --security-opt seccomp=unconfined -v "$PWD:/src" -w /src "$BUILD_IMAGE" \
+            sh -c 'export PATH=/opt/python/cp311-cp311/bin:$PATH; python3 scripts/cli-smoke.py /src/dist/package/netinspect'
       - name: Package
-        shell: bash
+        env:
+          LIBC: ${{ matrix.libc }}
         run: |
-          set -euo pipefail
-          # Keep tag text out of filenames: arbitrary Git tags may contain slashes.
-          cp README.md LICENSE dist/package/
-          tar -C dist/package -czf dist/netinspect_linux_amd64.tar.gz netinspect README.md LICENSE
-          cd dist
-          sha256sum netinspect_linux_amd64.tar.gz > SHA256SUMS
-
-      - name: Save build artifacts
-        uses: actions/upload-artifact@v4
+          cp README.md README.zh.md LICENSE dist/package/
+          tar -C dist/package -czf "dist/netinspect_linux_${GOARCH}_${LIBC}.tar.gz" netinspect README.md README.zh.md LICENSE
+      - uses: actions/upload-artifact@v4
         with:
-          name: netinspect-linux-amd64
+          name: netinspect-${{ matrix.arch }}-${{ matrix.libc }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  package:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.publish && inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: netinspect-*
+          merge-multiple: true
+          path: dist
+      - name: Check packages and installer
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+          cd ..
+          python3 scripts/test-release.py dist
+      - name: Validate Homebrew formula
+        env:
+          RELEASE_TAG: v0.0.0
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 .github/workflows/homebrew-formula.py dist /tmp/netinspect.rb
+          ruby -c /tmp/netinspect.rb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
           path: |
-            dist/netinspect_linux_amd64.tar.gz
+            dist/*.tar.gz
             dist/SHA256SUMS
           if-no-files-found: error
 
+  release:
+    if: github.event_name == 'push' || inputs.publish
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.publish && inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: dist
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -86,7 +149,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          assets=(dist/netinspect_linux_amd64.tar.gz dist/SHA256SUMS)
+          assets=(dist/*.tar.gz dist/SHA256SUMS)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
@@ -124,7 +187,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/workflows/homebrew-formula.py \
-            dist/netinspect_linux_amd64.tar.gz homebrew-tap/Formula/netinspect.rb
+            dist homebrew-tap/Formula/netinspect.rb
           cd homebrew-tap
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'

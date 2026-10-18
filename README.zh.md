@@ -59,16 +59,18 @@ curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh |
 ### 1.2 Homebrew
 
 ```sh
-brew install ctxinf/homebrew-tap
+brew install ctxinf/tap/netinspect
 ```
+
+Homebrew 自动为 Intel 或 ARM Linux 选择 glibc 包；Alpine 等 musl 系统请使用安装脚本。
 
 ### 1.3 直接下载安装
 
-登录 GitHub 后，从 [Releases](https://github.com/ctxinf/netinspect/releases/latest) 下载 `netinspect_linux_amd64.tar.gz`
+从 [Releases](https://github.com/ctxinf/netinspect/releases/latest) 下载匹配架构与 libc 的压缩包。
 
 ### 1.4 从源码安装
 
-需要 Linux、Go **1.27.2 或更新版本**、C 编译器和 `make`。先通过 GitHub CLI 或 Git credential helper 配置私有仓库访问，再构建：
+需要 Linux、Go **1.27.2 或更新版本**、C 编译器和 `make`。构建命令：
 
 ```sh
 git clone https://github.com/ctxinf/netinspect.git

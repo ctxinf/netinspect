@@ -10,11 +10,12 @@
 CC      ?= gcc
 CFLAGS  ?= -O2 -fPIC -Wall -Wextra
 LDFLAGS := -shared
+LDLIBS  := -ldl -pthread
 
 all: libnetinspect.so
 
 libnetinspect.so: src/lib.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< -ldl
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
 
 clean:
 	rm -f libnetinspect.so

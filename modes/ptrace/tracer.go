@@ -1,3 +1,5 @@
+//go:build linux && amd64
+
 // Package ptrace implements the ptrace interception mode: it traces the
 // target process tree and rewrites connect() syscalls for TCP sockets to
 // redirect them into the proxy core's transparent frontend. Original
