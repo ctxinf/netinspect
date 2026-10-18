@@ -2,94 +2,68 @@
 <h1 align="center">netinspect</h1>
 <p align="center"><a href="README.md">中文</a> · English</p>
 
-<p align="center">Process-level network monitoring for Linux command-line programs. Inspect the connections from a single run in your browser.</p>
+<p align="center">`netinspect -- COMMAND ARGS` Inspect a process's network connections</p>
 
-- Prefix a command with `netinspect` to start monitoring and its Web dashboard.
-- Inspect destinations, processes, connection latency, upload/download bytes, results, and visible TLS SNI / ALPN. The `netns` mode also records DNS questions and answers.
-- The live dashboard provides status filters, search, sorting, pagination, configurable columns, record details, and light/dark themes.
-- Choose from four modes: `preload`, `ptrace`, `netns`, and `observe`.
-- Written in Go, with the dashboard and preload library embedded in the binary. No separate Web deployment is needed.
-- Records stay in memory, with a default **128 MiB** storage budget. The dashboard stays open for **30 minutes** after the command exits, then releases its data.
-- Connection metadata only: no MITM, TLS decryption, or storage of request/response bodies.
+<image src="assets/demo.gif"/>
 
-## Contents
+- Wrap and launch a command directly from the CLI.
+- A Web dashboard similar to MetacubeX and Zashboard.
+- Choose from four modes based on the target program and available permissions: `preload`, `ptrace`, `netns`, and `observe`.
 
-- [1. Installation](#1-installation)
-  - [1.1 Install script](#11-install-script)
-  - [1.2 Manual download](#12-manual-download)
-  - [1.3 Homebrew](#13-homebrew)
-  - [1.4 Build from source](#14-build-from-source)
-- [2. Usage](#2-usage)
-  - [2.1 Start monitoring](#21-start-monitoring)
-  - [2.2 Open the dashboard](#22-open-the-dashboard)
-  - [2.3 Exit and retention](#23-exit-and-retention)
-  - [2.4 Configuration](#24-configuration)
-- [3. Mode comparison](#3-mode-comparison)
-- [4. Development and releases](#4-development-and-releases)
-- [License](#license)
+**Use cases:**
+- Inspect a program's network connections.
+- Combine **CLI launch + Web inspection** to simplify analysis that would otherwise require manual tcpdump, packet capture, or MITM setup.
 
-## 1. Installation
+**What is not included:**
+- Linux only; no Windows or macOS version.
+- No automatic mode selection; choose a mode explicitly.
+- No persistence; records stay in memory and are released on shutdown.
+- No MITM, TLS decryption, or storage of request/response bodies.
+- No nested use with `proxychains4` or `graftcp`.
 
-Prebuilt packages currently support **Linux x86_64 / amd64**. The default `preload` mode uses a glibc shared library. Release packages are built on Ubuntu 22.04 and require glibc 2.35 or newer; for other environments, try building from source.
-
-This repository is currently private. Downloading its scripts, source, and Releases requires an authorized GitHub account or token. The `GH_TOKEN` below needs **Contents: Read** access to `ctxinf/netinspect`.
-
-<details id="11-install-script" open>
-<summary>1.1 Install script</summary>
-
-Go is not required. Install `curl`, `tar`, `sha256sum`, and `python3`, export an authorized token as `GH_TOKEN`, then run:
+**Limitations:**
+1. Many nonstandard binaries cannot be used directly.
+2. Some architectures cannot be fully analyzed, such as client/daemon-server setups.
 
 ```sh
-curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
-  https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-netinspect --version
+# 0. Shortcut: add the alias to ~/.bashrc or ~/.zshrc
+alias ni=netinspect
+ni curl -I https://example.com
+
+# 1. Basic usage: the target command and its arguments follow --; preload is the default
+netinspect -- curl -I https://example.com
+
+# 2. Select a mode: use ptrace for static binaries, such as Go programs
+netinspect --mode ptrace -- ./my-go-program
+
+# 3. Start an interactive shell: monitor its child processes; type exit to leave
+netinspect -- "$SHELL"
+
+# 4. Helper commands: initialize configuration and read bundled agent guidance
+netinspect init-config
+netinspect skills list
+netinspect skills get core --full
 ```
 
-The script downloads the latest stable Release, verifies its SHA256 checksum, and installs to `~/.local/bin`. Add the `PATH` setting to your shell configuration for future terminals.
+## Installation
 
-To choose a version and installation directory, download the script first:
+### 1.1 Install script
 
 ```sh
-curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
-  https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh -o /tmp/netinspect-install.sh
-NETINSPECT_VERSION=v0.1.1 NETINSPECT_INSTALL_DIR="$HOME/.local/bin" \
-  sh /tmp/netinspect-install.sh
+curl -fsSL https://raw.githubusercontent.com/ctxinf/netinspect/main/install.sh | sh
 ```
 
-`NETINSPECT_VERSION` defaults to `latest`; use the full tag when specifying a version. `NETINSPECT_INSTALL_DIR` must be writable by the current user. Run the script again to update.
-
-</details>
-
-<details id="12-manual-download">
-<summary>1.2 Manual download</summary>
-
-Sign in to GitHub, download `netinspect_linux_amd64.tar.gz` and `SHA256SUMS` from [Releases](https://github.com/ctxinf/netinspect/releases/latest), and place both files in the same directory:
+### 1.2 Homebrew
 
 ```sh
-sha256sum -c SHA256SUMS
-tar -xzf netinspect_linux_amd64.tar.gz
-mkdir -p "$HOME/.local/bin"
-install -m 755 netinspect "$HOME/.local/bin/netinspect"
-export PATH="$HOME/.local/bin:$PATH"
-netinspect --version
+brew install ctxinf/homebrew-tap
 ```
 
-The archive includes `netinspect`, the README, and the license. The preload library and dashboard are embedded in the executable.
+### 1.3 Manual download
 
-</details>
+Sign in to GitHub and download `netinspect_linux_amd64.tar.gz` from [Releases](https://github.com/ctxinf/netinspect/releases/latest).
 
-<details id="13-homebrew">
-<summary>1.3 Homebrew</summary>
-
-Stable releases automatically update `Formula/netinspect.rb` in [ctxinf/homebrew-tap](https://github.com/ctxinf/homebrew-tap). It currently provides a binary formula for Linux x86_64.
-
-The formula points to a private Release, and authentication for private Homebrew asset downloads has not been configured. Adding the tap alone does not enable anonymous installation. Use the token-based install script or manual download above for now.
-
-</details>
-
-<details id="14-build-from-source">
-<summary>1.4 Build from source</summary>
+### 1.4 Build from source
 
 Requires Linux, Go **1.27.2 or newer**, a C compiler, and `make`. Configure access to the private repository through GitHub CLI or a Git credential helper first:
 
@@ -104,162 +78,9 @@ export PATH="$HOME/.local/bin:$PATH"
 netinspect --version
 ```
 
-Build `modes/preload/libnetinspect.so` before compiling Go so it can be embedded. `scripts/build.sh` injects the nearest tag and current commit for the CLI and dashboard version information.
+Build `modes/preload/libnetinspect.so` before compiling Go so it can be embedded in the binary. `scripts/build.sh` injects the nearest tag and current commit for the CLI and dashboard version information.
 
-</details>
-
-## 2. Usage
-
-<details id="21-start-monitoring" open>
-<summary>2.1 Prefix your command with netinspect</summary>
-
-```sh
-netinspect curl -I https://example.com
-netinspect python app.py
-netinspect run -- ./my-command --help
-```
-
-The default `preload` mode works with dynamically linked programs. For statically linked programs, including many Go executables, use `ptrace`:
-
-```sh
-netinspect --mode ptrace -- ./my-go-program
-```
-
-To monitor commands launched from an interactive shell, pass the shell explicitly:
-
-```sh
-netinspect -- "$SHELL"
-```
-
-**Running without arguments only prints help.** Only the plain `netinspect command args...` shortcut can omit `--`. When using `run` or netinspect options, place `--` before the target command. All subsequent arguments are passed through unchanged.
-
-```sh
-netinspect --mode observe --keep-alive 10m -- python app.py
-netinspect --open-browser=false --port 0 -- curl -I https://example.com
-netinspect --help
-```
-
-For a shorter shell command, add `alias ni=netinspect` to `~/.bashrc` or `~/.zshrc`:
-
-```sh
-alias ni=netinspect
-ni curl -I https://example.com
-```
-
-CLI help and diagnostics are English. Help headings use color in a terminal;
-redirected output, `NO_COLOR` and `TERM=dumb` disable ANSI colors.
-
-Agent workflows are bundled in the installed binary, following the
-[agent-browser skills interface](https://github.com/vercel-labs/agent-browser/blob/main/docs/src/app/skills/page.mdx):
-
-```sh
-netinspect skills list
-netinspect skills get core
-netinspect skills get core --full
-```
-
-
-</details>
-
-<details id="22-open-the-dashboard">
-<summary>2.2 Inspect connections in your browser</summary>
-
-Open the dashboard URL printed in the terminal. The default address is `127.0.0.1:17890`; occupied ports are incremented automatically. Use `--port 0` to let the OS select an available port. On a desktop, netinspect attempts to open a browser by default; disable this with `--open-browser=false`.
-
-- Switch between all, active, and closed records.
-- Search destinations, processes, IPs, SNI, or DNS answers. Press `/` to focus search.
-- Sort through column headers or the sort menu, and choose column visibility and order in settings.
-- Click a record for process, destination, timing, traffic, TLS, or DNS details. Available fields depend on the mode.
-- Pausing the dashboard only pauses page updates; monitoring and recording continue.
-
-Each run has its own session, dashboard port, and stop token. Multiple commands can be monitored concurrently. Nested netinspect capture is rejected, including through shell wrappers.
-
-The dashboard supports English, Simplified Chinese, Spanish, French, German, Japanese and Portuguese. It uses browser language preferences initially; the language selector saves your choice in a cookie for one year.
-
-</details>
-
-<details id="23-exit-and-retention">
-<summary>2.3 Keep records after exit or close the dashboard early</summary>
-
-When the target command exits, the terminal prints its result and the dashboard expiry time. netinspect stays in the foreground for **30 minutes** by default, allowing you to inspect existing records, then returns the target command's exit code.
-
-```sh
-# Retain the dashboard for 10 minutes after the target exits
-netinspect --keep-alive 10m -- curl -I https://example.com
-
-# Close immediately after the target exits
-netinspect --keep-alive 0 -- curl -I https://example.com
-```
-
-During retention, use the dashboard shutdown button, press Ctrl+C, or copy the stop command printed in the terminal:
-
-```sh
-netinspect stop --url http://127.0.0.1:17890 --token TOKEN_FROM_TERMINAL
-```
-
-Dashboard shutdown and `stop` are rejected while the target is still running. Closing the dashboard releases the session's in-memory records; there is no cross-session history.
-
-</details>
-
-<details id="24-configuration">
-<summary>2.4 Configure defaults and the memory budget</summary>
-
-Configuration is loaded in this order, with later values taking precedence:
-
-1. `$XDG_CONFIG_HOME/netinspect/config.json`, or `~/.config/netinspect/config.json` when XDG is unset.
-2. `.netinspect.json` in the current directory.
-3. Command-line options.
-
-`netinspect init-config` creates the default user configuration without overwriting existing files. `netinspect --help` shows the absolute user/local configuration paths and whether each file exists. All fields are optional. Example `.netinspect.json`:
-
-```json
-{
-  "mode": "preload",
-  "listen": "127.0.0.1:17890",
-  "keep_alive": "30m",
-  "open_browser": true,
-  "memory_mb": 128,
-  "upstream_proxy": null
-}
-```
-
-`--config FILE` replaces automatic discovery and loads only the specified file. Missing explicit files, unknown fields, and invalid formats produce errors. Within one configuration layer, `port` overrides the port in `listen`.
-
-```sh
-netinspect --config ./netinspect.json -- python app.py
-netinspect --memory-mb 64 -- python app.py
-```
-
-`memory_mb` is a **record storage budget**, not a total process memory limit. Proxy buffers and the Go runtime use additional memory. Each record reserves a conservative 8 KiB, allowing up to 16,384 records by default. At the limit, new records are rejected without evicting history. Existing connections continue to update, and the proxy and target keep running.
-
-</details>
-
-### Upstream proxy
-
-Route captured TCP connections through an explicit proxy:
-
-```sh
-netinspect --upstream-proxy http://127.0.0.1:3128 -- curl -I https://example.com
-netinspect --upstream-proxy socks5h://127.0.0.1:1080 -- curl -I https://example.com
-```
-
-The generated default `"upstream_proxy": null` leaves the upstream unset; connections are direct unless another configuration supplies a proxy. An empty string explicitly disables a previously configured proxy.
-Set `"upstream_proxy": "http://127.0.0.1:3128"` in JSON to enable an upstream.
-Supported schemes are `http`, `https`, `socks5`, and `socks5h`; URL credentials
-(`scheme://user:password@host:port`) enable HTTP Basic or SOCKS5 username/password
-authentication. HTTPS proxies use system certificate trust. Route metadata and
-startup diagnostics omit credentials. Upstream failure never falls back to direct.
-
-This applies to TCP in preload, ptrace and netns. Observe rejects the option.
-DNS/UDP are not tunneled. `socks5` resolves names locally; `socks5h` and HTTP(S)
-pass destination names to the proxy when available. If the application already
-resolved a name before interception, the upstream receives that IP.
-The proxy must be reachable inside netns; host loopback is a different network.
-Ambient proxy environment variables are not used to select this upstream, and
-application-level proxy settings remain in effect (possibly creating a chain).
-
-
-## 3. Mode comparison
+## Four modes
 
 | Mode | How it works | Best suited for | DNS queries | Requirements and limits |
 | --- | --- | --- | --- | --- |
@@ -292,43 +113,3 @@ When launched through sudo, the monitor creates the namespace as root and runs t
 - There is no general UDP monitoring, HTTP request body parsing, HTTPS decryption, or network content storage.
 
 </details>
-
-## 4. Development and releases
-
-<details>
-<summary>Local validation</summary>
-
-```sh
-make -C modes/preload
-go test ./...
-go vet ./...
-node scripts/test-i18n.cjs # Node.js 18+
-sh scripts/build.sh -o /tmp/netinspect
-python3 scripts/cli-smoke.py /tmp/netinspect
-```
-
-The CLI smoke test only uses local loopback. It covers argument forwarding, target exit codes, dashboard retention, concurrent ports, and stop isolation. Runtime verification of `netns` requires root and network namespace permissions.
-
-</details>
-
-<details>
-<summary>Publish a Release and update the Homebrew tap</summary>
-
-Pushing a new version tag triggers the [Release workflow](.github/workflows/release.yml): tests, Linux amd64 build, CLI smoke, archive and checksum generation, GitHub Release publication, and Actions Artifacts upload.
-
-```sh
-git tag v0.1.2
-git push origin v0.1.2
-```
-
-Stable tags use `v1.2.3` or `1.2.3`. Tags containing `-`, such as `v1.2.3-rc.1`, create prereleases and skip the Homebrew update. Project versions come from Git tags; the `go` directive in `go.mod` declares the minimum Go toolchain version.
-
-Homebrew updates use `HOMEBREW_TAP_TOKEN` in the **netinspect repository's** Actions Repository secrets. It needs **Contents: Read and write** access to `ctxinf/homebrew-tap`, including permission to push to its default branch. Release publication uses the workflow's built-in `GITHUB_TOKEN`.
-
-To retry a publication, choose Actions → Release → Run workflow and enter an existing tag. Release-only scripts live in `.github/workflows`; the installation entry point is [install.sh](install.sh) at the repository root.
-
-</details>
-
-## License
-
-[MIT](LICENSE). The preload and ptrace interception implementations are original code and do not use graftcp / proxychains code.
