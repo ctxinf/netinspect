@@ -2,7 +2,7 @@
 <h1 align="center">netinspect</h1>
 <p align="center"><a href="README.md">English</a> · 中文</p>
 
-`netinspect -- COMMAND ARGS`启动, 然后通过web面板查看进程的网络连接情况
+**`netinspect -- COMMAND ARGS`启动, 然后通过web面板查看进程的网络连接情况**
 
 <image src="assets/demo.gif"/>
 

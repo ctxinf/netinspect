@@ -2,7 +2,7 @@
 <h1 align="center">netinspect</h1>
 <p align="center">English · <a href="README.zh.md">中文</a></p>
 
-`netinspect -- COMMAND ARGS` launches a command, then lets you inspect the process's network connections in the Web dashboard.
+**`netinspect -- COMMAND ARGS` launches a command, then lets you inspect the process's network connections in the Web dashboard.**
 
 <image src="assets/demo.gif"/>
 
