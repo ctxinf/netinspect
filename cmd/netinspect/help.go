@@ -39,36 +39,16 @@ Options:
       --version                Print version information
   -h, --help                   Print help
 
-Examples:
-  netinspect curl -I https://example.com
-  netinspect --mode observe --keep-alive 10m -- python app.py
-  netinspect run -- ./my-command --help
-
-Configuration:
-  User config, then .netinspect.json in the working directory, then CLI options.
-  --config replaces automatic file discovery. Target arguments are passed unchanged.
-  With run or options, separate the target command using --.
-
 Shell alias:
   alias ni=netinspect
   Add this line to ~/.bashrc or ~/.zshrc, then use: ni curl -I https://example.com
-
-Capture notes:
-  Connection metadata only; traffic is not decrypted. Records live until shutdown.
-  Each record reserves 8 KiB. The default budget holds at most 16384 records.
-  At capacity, existing records still update and traffic continues; new records stop.
-  Proxy buffers and the Go runtime use additional memory.
-  Upstream proxy applies to TCP only (preload, ptrace, netns); DNS/UDP stay direct.
-  socks5 resolves locally; socks5h and HTTP(S) pass available names to the proxy.
-  If the target already resolved a name, the upstream receives its IP.
-  In netns, the upstream must be reachable from inside the namespace.
 `
 
 func printHelpText(text string) {
 	_, noColor := os.LookupEnv("NO_COLOR")
 	_, terminalErr := unix.IoctlGetTermios(int(os.Stdout.Fd()), unix.TCGETS)
 	if !noColor && os.Getenv("TERM") != "dumb" && terminalErr == nil {
-		for _, heading := range []string{"Usage:", "Commands:", "Options:", "Examples:", "Configuration:", "Shell alias:", "Capture notes:"} {
+		for _, heading := range []string{"Usage:", "Commands:", "Options:", "Shell alias:"} {
 			text = strings.ReplaceAll(text, heading, "\x1b[1;32m"+heading+"\x1b[0m")
 		}
 	}
