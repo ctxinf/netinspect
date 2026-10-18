@@ -38,6 +38,7 @@ import (
 
 // Config configures one run.
 type Config struct {
+	ConfigPaths   []string // successfully loaded configuration files, in precedence order
 	UpstreamProxy string
 	upstream      proxy.Upstream
 	Mode          string   // preload|ptrace|netns|observe
@@ -209,6 +210,9 @@ func printBanner() {
 }
 
 func printPanel(cfg Config) {
+	for _, path := range cfg.ConfigPaths {
+		cliui.Printf("· Config loaded: %s\n", path)
+	}
 	if cfg.upstream != nil {
 		cliui.Printf("· Upstream: %s (TCP only; DNS/UDP are not tunneled)\n", cfg.upstream.Name())
 	}

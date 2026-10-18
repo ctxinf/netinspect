@@ -147,6 +147,11 @@ func parseRun(args []string, defaultMode string) (session.Config, error) {
 				return cfg, fmt.Errorf("config %s: %w", path, err)
 			}
 		}
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return cfg, fmt.Errorf("config %s: %w", path, err)
+		}
+		cfg.ConfigPaths = append(cfg.ConfigPaths, absPath)
 	}
 	fs := flag.NewFlagSet("netinspect", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)

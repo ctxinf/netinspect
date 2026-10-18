@@ -52,6 +52,13 @@ func TestConfigPrecedence(t *testing.T) {
 	if cfg.Mode != "observe" || cfg.Listen != "127.0.0.1:19002" || cfg.KeepAlive != 2*time.Minute {
 		t.Fatalf("%+v", cfg)
 	}
+	localPath, err := filepath.Abs(".netinspect.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cfg.ConfigPaths, []string{filepath.Join(dir, "config.json"), localPath}) {
+		t.Fatalf("loaded config paths = %q", cfg.ConfigPaths)
+	}
 	os.WriteFile("explicit.json", []byte(`{"mode":"ptrace"}`), 0600)
 	cfg, err = parseRun([]string{"--config=explicit.json", "--", "true"}, "preload")
 	if err != nil {
@@ -59,6 +66,13 @@ func TestConfigPrecedence(t *testing.T) {
 	}
 	if cfg.Mode != "ptrace" || cfg.Listen != "127.0.0.1:17890" {
 		t.Fatalf("%+v", cfg)
+	}
+	explicitPath, err := filepath.Abs("explicit.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cfg.ConfigPaths, []string{explicitPath}) {
+		t.Fatalf("loaded config paths = %q", cfg.ConfigPaths)
 	}
 }
 func TestInvalidOptions(t *testing.T) {
