@@ -4,6 +4,7 @@
 package dashboard
 
 import (
+	"bufio"
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"netinspect"
 	"netinspect/internal/proxy"
@@ -79,6 +81,7 @@ func New(st *store.Store, hub *Hub) *Server {
 	d.mux.HandleFunc("/api/control", d.handleControl)
 	d.mux.HandleFunc("/api/end", d.handleEnd)
 	d.mux.HandleFunc("/api/session", d.handleSession)
+	d.mux.HandleFunc("/api/export", d.handleExport)
 	d.mux.HandleFunc("/api/connections", d.handleConnections)
 	d.mux.HandleFunc("/api/dns", d.handleDNS)
 	d.mux.HandleFunc("/api/items", d.handleItems)
@@ -98,7 +101,7 @@ func (d *Server) Handler() http.Handler {
 		d.dataMu.RLock()
 		data := d.data
 		d.dataMu.RUnlock()
-		if data != nil && (r.URL.Path == "/api/session" || r.URL.Path == "/api/connections" || r.URL.Path == "/api/dns" || r.URL.Path == "/api/ws" || r.URL.Path == "/api/items") {
+		if data != nil && (r.URL.Path == "/api/session" || r.URL.Path == "/api/connections" || r.URL.Path == "/api/dns" || r.URL.Path == "/api/ws" || r.URL.Path == "/api/items" || r.URL.Path == "/api/export") {
 			data.ServeHTTP(w, r)
 			return
 		}
@@ -257,4 +260,32 @@ func (d *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, d.store.QueryItems(store.Query{Q: v.Get("q"), Status: status, Sort: v.Get("sort"), Direction: direction, Page: page, Size: size}))
+}
+
+func (d *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "GET required", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	session, connections := d.store.ConnectionSnapshot()
+	mode := session.Mode
+	switch mode {
+	case "preload", "ptrace", "netns", "observe":
+	default:
+		mode = "unknown"
+	}
+	filename := "netinspect-" + mode + "-" + time.Now().UTC().Format("20060102T150405Z") + ".jsonl"
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	// Stream records without retaining a second, serialized copy of the export.
+	output := bufio.NewWriter(w)
+	encoder := json.NewEncoder(output)
+	for _, connection := range connections {
+		if err := encoder.Encode(connection); err != nil {
+			return
+		}
+	}
+	_ = output.Flush()
 }

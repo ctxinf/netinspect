@@ -14,6 +14,7 @@
   --green: #15803d;
   --red: #b91c1c;
   --muted-bg: #f4f4f5;
+  --code-bg: #eff1f3;
   --shadow: 0 4px 18px #0000000a;
   --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
@@ -33,6 +34,7 @@
   --green: #4ade80;
   --red: #f87171;
   --muted-bg: #1c1c20;
+  --code-bg: #303036;
   --shadow: 0 4px 18px #00000030;
 }
 * {
@@ -451,7 +453,7 @@ main {
 .table-scroll {
   overflow: auto;
   min-height: 320px;
-  max-height: 65vh;
+
 }
 table {
   width: 100%;
@@ -1396,3 +1398,37 @@ main > .foot {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.session-line .command code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  color: var(--text);
+}
+.foot .memory > span {
+  font-size: 11px;
+  color: var(--dim);
+  font-weight: 400;
+}
+#export-records {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--panel);
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+#export-records:hover { background: var(--hover); }
+#export-records:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

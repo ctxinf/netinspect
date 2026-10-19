@@ -1,6 +1,8 @@
 "use strict";
 window.netinspectMessages = {
   "en": {
+    "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?": "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?",
+    "Export records": "Export records",
     "Connecting": "Connecting",
     "Change theme": "Change theme",
     "GitHub repository": "GitHub repository",
@@ -38,7 +40,7 @@ window.netinspectMessages = {
     "Previous page": "Previous page",
     "Next page": "Next page",
     "Last page": "Last page",
-    "Record storage": "Record storage",
+    "Record storage": "Record memory usage",
     "Close column settings": "Close column settings",
     "Choose visible columns; use arrows to reorder.": "Choose visible columns; use arrows to reorder.",
     "Reset defaults": "Reset defaults",
@@ -115,6 +117,8 @@ window.netinspectMessages = {
     "Upstream proxy": "Upstream proxy"
   },
   "zh-CN": {
+    "Export records": "导出记录",
+    "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?": "关闭后此页面将无法再访问。如需保留记录，请先导出。是否继续关闭？",
     "Connecting": "连接中",
     "Change theme": "切换外观主题",
     "GitHub repository": "GitHub 仓库",
@@ -152,7 +156,7 @@ window.netinspectMessages = {
     "Previous page": "上一页",
     "Next page": "下一页",
     "Last page": "最后一页",
-    "Record storage": "当前记录大小",
+    "Record storage": "当前记录占用内存",
     "Close column settings": "关闭列设置",
     "Choose visible columns; use arrows to reorder.": "选择需要显示的列，使用箭头调整顺序。",
     "Reset defaults": "恢复默认",
@@ -229,6 +233,8 @@ window.netinspectMessages = {
     "Upstream proxy": "上游代理"
   },
   "es": {
+    "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?": "Al cerrar, esta página dejará de estar disponible. Exporta los registros primero si quieres conservarlos. ¿Continuar?",
+    "Export records": "Exportar registros",
     "Connecting": "Conectando",
     "Change theme": "Cambiar tema",
     "GitHub repository": "Repositorio de GitHub",
@@ -343,6 +349,8 @@ window.netinspectMessages = {
     "Upstream proxy": "Proxy de salida"
   },
   "fr": {
+    "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?": "Après la fermeture, cette page sera inaccessible. Exportez les enregistrements pour les conserver. Continuer ?",
+    "Export records": "Exporter les enregistrements",
     "Connecting": "Connexion",
     "Change theme": "Changer de thème",
     "GitHub repository": "Dépôt GitHub",
@@ -457,6 +465,8 @@ window.netinspectMessages = {
     "Upstream proxy": "Proxy amont"
   },
   "de": {
+    "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?": "Nach dem Schließen ist diese Seite nicht mehr erreichbar. Exportieren Sie zuerst die Aufzeichnungen, um sie zu behalten. Fortfahren?",
+    "Export records": "Aufzeichnungen exportieren",
     "Connecting": "Verbindung wird hergestellt",
     "Change theme": "Design ändern",
     "GitHub repository": "GitHub-Repository",
@@ -571,6 +581,8 @@ window.netinspectMessages = {
     "Upstream proxy": "Upstream-Proxy"
   },
   "ja": {
+    "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?": "終了するとこのページにアクセスできなくなります。記録を保存するには先にエクスポートしてください。続行しますか？",
+    "Export records": "記録をエクスポート",
     "Connecting": "接続中",
     "Change theme": "テーマを変更",
     "GitHub repository": "GitHub リポジトリ",
@@ -685,6 +697,8 @@ window.netinspectMessages = {
     "Upstream proxy": "上流プロキシ"
   },
   "pt": {
+    "Closing will make this page inaccessible. Export records first if you want to keep them. Continue?": "Ao encerrar, esta página ficará inacessível. Exporte os registros primeiro para guardá-los. Continuar?",
+    "Export records": "Exportar registros",
     "Connecting": "Conectando",
     "Change theme": "Alterar tema",
     "GitHub repository": "Repositório GitHub",

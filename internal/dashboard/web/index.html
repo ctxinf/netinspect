@@ -24,10 +24,11 @@
         ><img class="brand-icon" src="/favicon.png" width="28" height="28" alt="" /> <span>netinspect<span class="brand-dot">.</span></span></a
       >
       <div class="header-end">
-        <select id="language" aria-label="Language" data-i18n-aria-label="Language"></select>
         <span class="live"
           ><i id="live-dot"></i><span id="live-text"><span data-i18n="Connecting">Connecting</span></span></span
-        ><button
+        >
+        <select id="language" aria-label="Language" data-i18n-aria-label="Language"></select>
+        <button
           id="theme"
           class="icon-btn"
           aria-label="Change theme" data-i18n-aria-label="Change theme"
@@ -92,7 +93,7 @@
             </svg></button
         ></span>
         <span class="session-item command"
-          ><span data-i18n="Command">Command</span> <strong id="command">—</strong></span
+          ><span data-i18n="Command">Command</span> <code id="command">—</code></span
         >
         <span class="mode-tag"
           ><svg
@@ -140,6 +141,14 @@
             <path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5" /></svg
           ><strong id="st-up">0 B</strong></span
         >
+        <a id="export-records" class="export-records" href="/api/export" download
+          title="Export records" data-i18n-title="Export records">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" />
+          </svg>
+          <span data-i18n="Export records">Export records</span>
+        </a>
       </section>
       <div id="limit-notice" class="notice" hidden role="status"></div>
       <section class="list-panel" aria-label="Network records" data-i18n-aria-label="Network records">
@@ -268,8 +277,7 @@
       </section>
       <footer class="foot">
         <div class="memory">
-          <span><span data-i18n="Record storage">Record storage</span> <b id="memory-label">—</b></span>
-          <div class="meter"><i id="memory-bar"></i></div>
+          <span><span data-i18n="Record storage">Record storage</span>: <span id="memory-label">—</span></span>
         </div>
         <span
           >netinspect <span id="cli-version">—</span

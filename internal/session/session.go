@@ -65,7 +65,7 @@ func newSID() string {
 
 // Run executes one session.
 func Run(cfg Config) error {
-	if err := checkNesting(); err != nil {
+	if err := CheckNesting(); err != nil {
 		return err
 	}
 	previous, hadPrevious := os.LookupEnv(activeSessionEnv)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"netinspect/internal/cliui"
@@ -66,6 +67,38 @@ func runCmd(args []string, defaultMode string) error {
 	cfg, err := parseRun(args, defaultMode)
 	if err != nil {
 		return err
+	}
+	if cfg.Mode == "netns" && os.Geteuid() != 0 {
+		if err := session.CheckNesting(); err != nil {
+			return err
+		}
+		sudo, err := exec.LookPath("sudo")
+		if err != nil {
+			return fmt.Errorf("netns requires sudo: %w", err)
+		}
+		// Reuse the absolute executable path: sudo's secure_path excludes user installations.
+		elevated := []string{"--", cfg.ExePath}
+		for _, path := range cfg.ConfigPaths {
+			elevated = append(elevated, "--config", path)
+		}
+		elevated = append(elevated, "--mode", cfg.Mode, "--listen", cfg.Listen,
+			"--memory-mb", strconv.FormatInt(cfg.MemoryMB, 10), "--keep-alive", cfg.KeepAlive.String(),
+			"--open-browser="+strconv.FormatBool(cfg.OpenBrowser), "--upstream-proxy", cfg.UpstreamProxy)
+		if cfg.TargetUser != "" {
+			elevated = append(elevated, "--user", cfg.TargetUser)
+		}
+		elevated = append(elevated, "--")
+		target := append([]string(nil), cfg.Command...)
+		if len(target) > 0 {
+			if resolved, err := exec.LookPath(target[0]); err == nil {
+				target[0] = resolved
+			}
+		}
+		elevated = append(elevated, target...)
+		cliui.Printf("· netns requires administrator privileges; requesting sudo authentication\n")
+		// Replace this process so the elevated instance has no netinspect launcher
+		// ancestor. Real outer sessions are checked above, before sudo filters env.
+		return syscall.Exec(sudo, append([]string{sudo}, elevated...), os.Environ())
 	}
 	return session.Run(cfg)
 }

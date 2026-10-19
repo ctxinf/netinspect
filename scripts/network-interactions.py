@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Small public UDP/WebSocket interactions using only the Python standard library."""
+"""Small public HTTP/UDP/WebSocket interactions using only the Python standard library."""
 import base64
+from concurrent.futures import ThreadPoolExecutor
+import json
 import hashlib
 import os
 import socket
@@ -8,6 +10,31 @@ import ssl
 import struct
 import sys
 import time
+import threading
+import urllib.request
+
+
+def jsonplaceholder_burst():
+    # Release all workers together; each request uses a separate connection.
+    start = threading.Barrier(20)
+
+    def request(post_id):
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        start.wait(timeout=8)
+        with opener.open(
+                f'https://jsonplaceholder.typicode.com/posts/{post_id}', timeout=15) as response:
+            if response.status != 200:
+                raise RuntimeError('JSONPlaceholder returned an unsuccessful status')
+            post = json.loads(response.read(65537))
+            if not isinstance(post, dict) or post.get('id') != post_id:
+                raise RuntimeError('JSONPlaceholder returned an unexpected post')
+        return post_id
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        results = list(pool.map(request, range(1, 21)))
+    if len(results) != 20:
+        raise RuntimeError('JSONPlaceholder burst did not complete all 20 requests')
+    print('Validated 20 concurrent JSONPlaceholder requests')
 
 
 def udp_dns():
@@ -112,4 +139,4 @@ def websocket():
 
 
 if __name__ == '__main__':
-    {'udp': udp_dns, 'ws': websocket}[sys.argv[1]]()
+    {'udp': udp_dns, 'ws': websocket, 'http-burst': jsonplaceholder_burst}[sys.argv[1]]()

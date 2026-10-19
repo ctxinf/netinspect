@@ -10,9 +10,9 @@ import (
 
 const activeSessionEnv = "NETINSPECT_ACTIVE_SESSION"
 
-// Refuse nested capture even through shell wrappers, aliases, or renamed binaries.
+// CheckNesting refuses nested capture even through shell wrappers, aliases, or renamed binaries.
 // The environment marker covers descendants; /proc also covers wrappers that clear it.
-func checkNesting() error {
+func CheckNesting() error {
 	if os.Getenv(activeSessionEnv) != "" || os.Getenv("NETINSPECT_SOCK_PATH") != "" {
 		return fmt.Errorf("nested netinspect sessions are not supported; run the command outside the active session")
 	}

@@ -43,7 +43,7 @@ run_step() {
     local label=$1 limit=$2 tool=$3 rc
     shift 3
     step=$((step + 1))
-    printf '\n[%d/13] %s\n' "$step" "$label"
+    printf '\n[%d/14] %s\n' "$step" "$label"
     if ! command -v "$tool" >/dev/null 2>&1; then
         printf 'SKIP: missing %s\n' "$tool"
         skipped=$((skipped + 1))
@@ -68,6 +68,10 @@ run_step() {
 run_step 'HTTPS example.com (no explicit proxy)' "$STEP_TIMEOUT" curl \
     curl --silent --show-error --fail --location --proxy '' \
     --connect-timeout 8 --max-time "$STEP_TIMEOUT" --output /dev/null https://example.com
+
+# Start 20 HTTPS requests together and validate every returned JSON post.
+run_step 'HTTPS burst: 20 concurrent JSONPlaceholder requests' "$STEP_TIMEOUT" python3 \
+    python3 "$script_dir/network-interactions.py" http-burst
 
 run_step 'HTTPS example.com via HTTP proxy (CONNECT)' "$STEP_TIMEOUT" curl \
     curl --silent --show-error --fail --location --noproxy '' --proxy "$HTTP_PROXY_URL" \

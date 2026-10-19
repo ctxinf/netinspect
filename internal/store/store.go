@@ -567,3 +567,14 @@ func (s *Store) QueryItems(q Query) Page {
 	}
 	return out
 }
+
+// ConnectionSnapshot copies the session and all retained connections under one lock.
+func (s *Store) ConnectionSnapshot() (Session, []Conn) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	connections := make([]Conn, len(s.conns))
+	for i, c := range s.conns {
+		connections[i] = *c
+	}
+	return s.session, connections
+}

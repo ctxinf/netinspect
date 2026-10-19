@@ -76,7 +76,7 @@ Build `modes/preload/libnetinspect.so` before compiling Go so it can be embedded
 **What is not included:**
 - Linux only; no Windows or macOS version.
 - No automatic mode selection; choose a mode explicitly.
-- No persistence; records stay in memory and are released on shutdown.
+- Records stay in memory and are released on shutdown. Use **Export records** in the Web dashboard to save connections as JSONL; filenames include the capture mode and UTC timestamp.
 - No MITM, TLS decryption, or storage of request/response bodies.
 - No nested use with `proxychains4` or `graftcp`.
 

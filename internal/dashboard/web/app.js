@@ -373,7 +373,6 @@ function renderSession(data) {
   $("st-down").textContent = bytes(st.bytes_down);
   if (m) {
     $("memory-label").textContent = bytes(m.used) + " / " + bytes(m.limit);
-    $("memory-bar").style.width = Math.min(100, (m.used / m.limit) * 100) + "%";
     $("limit-notice").hidden = !m.limited;
     $("limit-notice").textContent =
       t("Record storage limit reached; {count} records skipped. Existing records keep updating; proxy traffic and target continue.", {count: m.dropped});
@@ -400,6 +399,7 @@ function connectionState(ok, message) {
   state.connectionMessage = message;
   $("live-dot").classList.toggle("off", !ok);
   $("live-text").textContent = t(message);
+  $("live-text").parentElement.title = new URL("/api/session", location.href).href;
 }
 function hasTableSelection() {
   const selection = window.getSelection();
@@ -602,6 +602,7 @@ function renderDetail(item) {
     .join("");
 }
 async function stopServer() {
+  if (!window.confirm(t("Closing will make this page inaccessible. Export records first if you want to keep them. Continue?"))) return;
   const button = $("stop-server");
   button.disabled = true;
   try {
